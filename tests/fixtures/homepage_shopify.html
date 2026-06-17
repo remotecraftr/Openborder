@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="alternate" hreflang="en-gb" href="https://example.myshopify.com/en-gb">
+  <link rel="alternate" hreflang="de" href="https://example.myshopify.com/de">
+  <link rel="alternate" hreflang="x-default" href="https://example.myshopify.com">
+  <script src="https://cdn.cookiebot.com/uc.js" data-cbid="xxxx"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXX"></script>
+  <script>
+    window.Shopify = window.Shopify || {};
+    Shopify.currency = {"active":"EUR","rate":"1.0"};
+    var presentmentCurrencies = ["USD","EUR","GBP","CAD"];
+  </script>
+</head>
+<body>
+  <form action="/localization" method="POST">
+    <select name="country_code">
+      <option value="US">United States</option>
+      <option value="DE">Germany</option>
+    </select>
+  </form>
+  <footer>
+    <a href="/policies/privacy-policy">Privacy Policy</a>
+    <a href="/policies/terms-of-service">Terms</a>
+    <a class="do-not-sell" href="#">Do Not Sell or Share My Personal Information</a>
+  </footer>
+</body>
+</html>
