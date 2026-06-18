@@ -1,14 +1,15 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import { BaseModule } from './base';
 import type { Finding } from '../types';
 import { launchBrowser } from '../browser';
 
-// Loaded once at module init — inlined so the browser doesn't need CDN access
-const AXE_SOURCE = fs.readFileSync(
-  path.join(path.dirname(require.resolve('axe-core')), 'axe.min.js'),
-  'utf8',
-);
+// Lazily loaded so a missing file throws inside runAxe() (caught → SKIP_FINDING) not at import time
+let _axeSource: string | null = null;
+function getAxeSource(): string {
+  if (_axeSource) return _axeSource;
+  _axeSource = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
+  return _axeSource;
+}
 
 interface AxeViolation {
   id: string;
@@ -58,7 +59,7 @@ export class AccessibilityModule extends BaseModule {
     try {
       const page = await browser.newPage();
       await page.goto(targetUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
-      await page.addScriptTag({ content: AXE_SOURCE });
+      await page.addScriptTag({ content: getAxeSource() });
 
       const results = await page.evaluate(async () => {
         // @ts-expect-error axe injected globally
@@ -73,7 +74,7 @@ export class AccessibilityModule extends BaseModule {
         const page2 = await browser.newPage();
         try {
           await page2.goto(secondUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
-          await page2.addScriptTag({ content: AXE_SOURCE });
+          await page2.addScriptTag({ content: getAxeSource() });
           const results2 = await page2.evaluate(async () => {
             // @ts-expect-error axe injected globally
             return await axe.run();
