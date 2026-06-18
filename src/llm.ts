@@ -7,7 +7,7 @@
  *  - Gracefully returns null if GEMINI_API_KEY absent or call fails
  */
 
-const MODEL = 'gemini-2.0-flash';
+const MODEL = 'gemini-2.5-flash';
 const MAX_POLICY_CHARS = 4000;
 
 export interface WithdrawalVerdict {
