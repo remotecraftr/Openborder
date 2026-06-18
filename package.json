@@ -7,15 +7,18 @@
     "build": "next build",
     "start": "next start",
     "analyze": "ts-node --project tsconfig.node.json bin/cli.ts",
+    "test:gemini": "ts-node --project tsconfig.node.json bin/test-gemini.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@sparticuz/chromium": "^149.0.0",
     "cheerio": "^1.0.0",
     "next": "^14.2.3",
     "playwright": "^1.61.0",
+    "playwright-core": "^1.61.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "robots-parser": "^3.0.1"

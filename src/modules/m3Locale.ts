@@ -1,17 +1,24 @@
 import * as cheerio from 'cheerio';
 import { BaseModule } from './base';
+import type { Crawler } from '../crawler';
 import type { Finding } from '../types';
+import { launchBrowser } from '../browser';
 
 export class LocalizationModule extends BaseModule {
   readonly moduleId = 'localization';
+  private readonly usePlaywright: boolean;
+
+  constructor(crawler: Crawler, opts: { usePlaywright?: boolean } = {}) {
+    super(crawler);
+    this.usePlaywright = opts.usePlaywright ?? false;
+  }
 
   async run(): Promise<Finding[]> {
     const findings: Finding[] = [];
     let html = '';
 
     try {
-      const result = await this.crawler.get('/');
-      html = result.text;
+      html = await this.fetchRenderedHtml();
     } catch (err) {
       findings.push({
         module: this.moduleId,
@@ -34,6 +41,32 @@ export class LocalizationModule extends BaseModule {
     findings.push(this.checkEnabledCurrencies($, html));
 
     return findings;
+  }
+
+  private async fetchRenderedHtml(): Promise<string> {
+    if (!this.usePlaywright) {
+      const result = await this.crawler.get('/');
+      return result.text;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let playwright: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      playwright = require('playwright');
+    } catch {
+      const result = await this.crawler.get('/');
+      return result.text;
+    }
+
+    const browser = await launchBrowser();
+    try {
+      const page = await browser.newPage();
+      await page.goto(this.crawler.baseUrl, { timeout: 15_000, waitUntil: 'networkidle' });
+      return await page.content();
+    } finally {
+      await browser.close();
+    }
   }
 
   private checkHreflang($: cheerio.CheerioAPI, _html: string): Finding {
@@ -110,7 +143,7 @@ export class LocalizationModule extends BaseModule {
       severity: 40,
       confidence: 'medium',
       evidence: { url: this.crawler.baseUrl },
-      suggestion: 'No country/locale selector detected. Add a Shopify localization form so customers can switch language and region.',
+      suggestion: 'No country/locale selector found in page source. If your theme renders it via JavaScript, the static scanner may miss it. Verify customers can switch market or language on your storefront.',
     };
   }
 
@@ -144,8 +177,8 @@ export class LocalizationModule extends BaseModule {
       status: 'not_detected',
       severity: 35,
       confidence: 'low',
-      evidence: { url: this.crawler.baseUrl },
-      suggestion: 'No currency selector detected on the homepage. Enable Shopify Markets and add a currency selector to let international customers see prices in their local currency.',
+      evidence: { url: this.crawler.baseUrl, value: 'Not found in page source — may be JavaScript-rendered' },
+      suggestion: 'No currency selector found in page source. If your theme renders it via JavaScript, the static scanner may miss it. Verify customers can switch currency on your storefront.',
     };
   }
 

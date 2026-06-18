@@ -1,10 +1,6 @@
 import { BaseModule } from './base';
 import type { Finding } from '../types';
-
-const IS_SERVERLESS =
-  process.env.VERCEL === '1' ||
-  process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined ||
-  process.env.FUNCTION_NAME !== undefined;
+import { launchBrowser } from '../browser';
 
 interface AxeViolation {
   id: string;
@@ -37,41 +33,19 @@ export class AccessibilityModule extends BaseModule {
   readonly moduleId = 'accessibility';
 
   async run(): Promise<Finding[]> {
-    if (IS_SERVERLESS) {
-      return SKIP_FINDING(
-        'Playwright is unavailable in serverless environments',
-        'Run the CLI locally to get axe-core accessibility results: npm run analyze <domain>'
-      );
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let playwright: any;
     try {
-      // Dynamic require so TypeScript doesn't fail when playwright is absent
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      playwright = require('playwright');
-    } catch {
-      return SKIP_FINDING(
-        'Playwright not installed',
-        'Install Playwright to enable accessibility scanning: npm install playwright && npx playwright install chromium'
-      );
-    }
-
-    try {
-      return await this.runAxe(playwright);
+      return await this.runAxe();
     } catch (err) {
-      // Playwright can fail to launch inside the Next.js dev server process
       return SKIP_FINDING(
         `Playwright failed: ${String(err)}`,
-        'Accessibility scanning requires a standalone process. Use the CLI instead: npm run analyze <domain>'
+        'Accessibility scan could not complete.'
       );
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async runAxe(playwright: any): Promise<Finding[]> {
+  private async runAxe(): Promise<Finding[]> {
     const targetUrl = await this.getProductUrl();
-    const browser = await playwright.chromium.launch({ headless: true });
+    const browser = await launchBrowser();
 
     try {
       const page = await browser.newPage();

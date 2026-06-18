@@ -34,7 +34,7 @@ async function main() {
 
   console.log(`\nScanning ${domain} ...\n`);
 
-  const result = await analyze(domain, { includeAccessibility: true });
+  const result = await analyze(domain, { includeAccessibility: true, usePlaywright: true });
 
   const label = result.readinessScore >= 80
     ? '✅ Good'

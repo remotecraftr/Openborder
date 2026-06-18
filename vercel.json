@@ -2,7 +2,8 @@
   "framework": "nextjs",
   "functions": {
     "pages/api/analyze.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 2048
     }
   }
 }

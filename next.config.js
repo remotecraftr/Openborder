@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Allow serverless functions up to 60s on Vercel free tier
-  experimental: {},
+  // Prevent Next.js/webpack from bundling these — they must load at runtime
+  serverExternalPackages: ['@sparticuz/chromium', 'playwright', 'playwright-core'],
 };
 
 module.exports = nextConfig;

@@ -12,10 +12,12 @@ export interface AnalyzeOptions {
   includeTaxDisplay?: boolean;
   /** Include M4 accessibility scan via Playwright (default: false — use CLI for reliable results) */
   includeAccessibility?: boolean;
+  /** Use Playwright to fully render pages before M3 localization checks (default: false — use CLI for JS-rendered currency/locale detection) */
+  usePlaywright?: boolean;
 }
 
 export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promise<AuditResult> {
-  const { includeTaxDisplay = false, includeAccessibility = false } = opts;
+  const { includeTaxDisplay = false, includeAccessibility = true, usePlaywright = true } = opts;
 
   const crawler = new Crawler(domain);
   await crawler.init();
@@ -33,7 +35,7 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
   const modules = [
     new LegalPagesModule(crawler),
     new ConsentTrackingModule(crawler),
-    new LocalizationModule(crawler),
+    new LocalizationModule(crawler, { usePlaywright }),
     ...(includeAccessibility ? [new AccessibilityModule(crawler)] : []),
     ...(includeTaxDisplay ? [new TaxDisplayModule(crawler)] : []),
   ];
