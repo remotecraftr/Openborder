@@ -1,13 +1,19 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { BaseModule } from './base';
 import type { Finding } from '../types';
 import { launchBrowser } from '../browser';
 
-// Lazily loaded so a missing file throws inside runAxe() (caught → SKIP_FINDING) not at import time
+// Lazily loaded inside runAxe() so a path error becomes a caught SKIP_FINDING, not an import crash.
+// Uses process.cwd() instead of require.resolve() — webpack transforms require.resolve() into
+// an internal module ID, breaking fs.readFileSync at runtime in the Next.js server bundle.
 let _axeSource: string | null = null;
 function getAxeSource(): string {
   if (_axeSource) return _axeSource;
-  _axeSource = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
+  _axeSource = fs.readFileSync(
+    path.join(process.cwd(), 'node_modules', 'axe-core', 'axe.min.js'),
+    'utf8',
+  );
   return _axeSource;
 }
 

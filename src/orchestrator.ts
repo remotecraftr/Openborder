@@ -32,18 +32,32 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
 
   const platform = (await detectShopify(crawler)) ? 'shopify' : 'unknown';
 
-  const modules = [
+  // Non-Playwright modules run in parallel; Playwright modules run sequentially after
+  // to avoid spawning two Chromium instances simultaneously (causes OOM on Vercel).
+  const staticModules = [
     new LegalPagesModule(crawler),
     new ConsentTrackingModule(crawler),
+  ];
+  const playwrightModules = [
     new LocalizationModule(crawler, { usePlaywright }),
     ...(includeAccessibility ? [new AccessibilityModule(crawler)] : []),
+  ];
+  const tailModules = [
     ...(includeTaxDisplay ? [new TaxDisplayModule(crawler)] : []),
   ];
+  const modules = [...staticModules, ...playwrightModules, ...tailModules];
 
   const allFindings: Finding[] = [];
   const errors: ErrorRecord[] = [];
 
-  const results = await Promise.allSettled(modules.map(m => m.run()));
+  // Run static modules in parallel, then Playwright modules one at a time
+  const staticResults = await Promise.allSettled(staticModules.map(m => m.run()));
+  const playwrightResults: PromiseSettledResult<Finding[]>[] = [];
+  for (const m of playwrightModules) {
+    playwrightResults.push(await Promise.allSettled([m.run()]).then(r => r[0]));
+  }
+  const tailResults = await Promise.allSettled(tailModules.map(m => m.run()));
+  const results = [...staticResults, ...playwrightResults, ...tailResults];
 
   for (let i = 0; i < results.length; i++) {
     const res = results[i];
