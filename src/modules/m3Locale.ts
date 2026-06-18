@@ -49,16 +49,6 @@ export class LocalizationModule extends BaseModule {
       return result.text;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let playwright: any;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      playwright = require('playwright');
-    } catch {
-      const result = await this.crawler.get('/');
-      return result.text;
-    }
-
     const browser = await launchBrowser();
     try {
       const page = await browser.newPage();
