@@ -11,7 +11,7 @@ import type { Finding } from './types';
  * penalty_i = severity_i × module_weight × status_multiplier
  * score = 100 − (total_penalty / max_possible) × 100
  */
-const SCORED_STATUSES = new Set(['pass', 'warn', 'fail']);
+const SCORED_STATUSES = new Set(['pass', 'warn', 'fail', 'not_detected']);
 
 export function computeScore(findings: Finding[]): number {
   const scoreable = findings.filter(f => SCORED_STATUSES.has(f.status));

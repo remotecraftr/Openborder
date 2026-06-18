@@ -8,12 +8,14 @@ import { TaxDisplayModule } from './modules/m5Tax';
 import type { AuditResult, Finding, ErrorRecord } from './types';
 
 export interface AnalyzeOptions {
-  /** Include M5 tax-display stretch module (default: true) */
+  /** Include M5 tax-display stretch module (default: false) */
   includeTaxDisplay?: boolean;
+  /** Include M4 accessibility scan via Playwright (default: false — use CLI for reliable results) */
+  includeAccessibility?: boolean;
 }
 
 export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promise<AuditResult> {
-  const { includeTaxDisplay = true } = opts;
+  const { includeTaxDisplay = false, includeAccessibility = false } = opts;
 
   const crawler = new Crawler(domain);
   await crawler.init();
@@ -32,7 +34,7 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
     new LegalPagesModule(crawler),
     new ConsentTrackingModule(crawler),
     new LocalizationModule(crawler),
-    new AccessibilityModule(crawler),
+    ...(includeAccessibility ? [new AccessibilityModule(crawler)] : []),
     ...(includeTaxDisplay ? [new TaxDisplayModule(crawler)] : []),
   ];
 

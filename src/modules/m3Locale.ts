@@ -81,7 +81,6 @@ export class LocalizationModule extends BaseModule {
       const inner = $(el).html() ?? '';
       return (
         action.includes('localization') ||
-        inner.includes('locale') ||
         inner.includes('country_code') ||
         /disclosure/i.test(inner)
       );
@@ -90,9 +89,7 @@ export class LocalizationModule extends BaseModule {
     const hasLocaleSelect =
       $('select[name*="locale"], select[name*="country"], select[id*="locale"]').length > 0;
 
-    const hasLocalizationTag = /Shopify\.locale|localization/i.test(html);
-
-    if (form || hasLocaleSelect || hasLocalizationTag) {
+    if (form || hasLocaleSelect) {
       return {
         module: this.moduleId,
         checkId: 'm3_localization_form',
@@ -120,10 +117,9 @@ export class LocalizationModule extends BaseModule {
   private checkCurrencySelector($: cheerio.CheerioAPI, html: string): Finding {
     const currencySelectors = [
       $('[data-currency-selector]').length > 0,
-      $('[class*="currency"]').length > 0,
-      $('[id*="currency"]').length > 0,
+      $('[id*="currency-selector"], [id*="currency_selector"]').length > 0,
       /currency[-_]?switch|currency[-_]?select/i.test(html),
-      /Shopify\.currency/i.test(html),
+      /presentmentCurrencies/i.test(html),
     ];
 
     const hasSelector = currencySelectors.some(Boolean);

@@ -145,7 +145,7 @@ export class ConsentTrackingModule extends BaseModule {
       severity: 88,
       confidence: 'medium' as const,
       evidence: { url: this.crawler.baseUrl, value: t.name },
-      suggestion: `${t.name} fires on page load without a consent gate. Under GDPR/ePD, tracking scripts must not load until the user has given explicit consent. Add a CMP and gate this script behind a consent check.`,
+      suggestion: `${t.name} loads on every page visit before any cookie consent is collected. EU/UK visitors can report this. Add a CMP (Cookiebot, OneTrust, or Shopify's consent API) and move this script behind the consent banner.`,
     }));
   }
 

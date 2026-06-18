@@ -1,4 +1,27 @@
 #!/usr/bin/env node
+import fs from 'fs';
+import path from 'path';
+
+// Load environment variables from .env.local if present
+const envPath = path.join(__dirname, '../.env.local');
+if (fs.existsSync(envPath)) {
+  const content = fs.readFileSync(envPath, 'utf8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const idx = trimmed.indexOf('=');
+      if (idx !== -1) {
+        const key = trimmed.slice(0, idx).trim();
+        const value = trimmed.slice(idx + 1).trim();
+        // Do not overwrite existing environment variables
+        if (process.env[key] === undefined) {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+}
+
 import { analyze } from '../src/orchestrator';
 
 async function main() {
@@ -11,7 +34,7 @@ async function main() {
 
   console.log(`\nScanning ${domain} ...\n`);
 
-  const result = await analyze(domain);
+  const result = await analyze(domain, { includeAccessibility: true });
 
   const label = result.readinessScore >= 80
     ? '✅ Good'

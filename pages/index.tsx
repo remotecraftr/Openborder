@@ -89,7 +89,7 @@ const SCAN_LINES = [
   ['Cross-referencing answers vs jurisdiction rules', true, 'done'],
 ] as [string, boolean, string][];
 
-const DEMO = ['allbirds.com', 'gymshark.com', 'shop.aurora-goods.com'];
+const DEMO = ['allbirds.com', 'gymshark.com', 'drmtlgy.com'];
 
 // Module → markets for per-market scoring
 const MODULE_MARKETS: Record<string, string[]> = {
@@ -100,33 +100,85 @@ const MODULE_MARKETS: Record<string, string[]> = {
   tax_display:      ['EU', 'UK'],
 };
 
+// Module weights — mirrors the backend scoring engine
+const MODULE_WEIGHTS: Record<string, number> = {
+  legal_pages:      1.0,
+  consent_tracking: 0.9,
+  accessibility:    0.6,
+  localization:     0.5,
+  tax_display:      0.4,
+};
+
+// Per-check market scope (more precise than module-level)
+const CHECK_MARKETS: Record<string, string[]> = {
+  m1_refund_policy:      ['EU', 'UK'],
+  m1_privacy_policy:     ['EU', 'UK', 'US', 'CA', 'AU'],
+  m1_terms_of_service:   ['EU', 'UK', 'US'],
+  m1_shipping_policy:    ['EU', 'UK', 'US', 'CA', 'AU'],
+  m1_eu_withdrawal:      ['EU', 'UK'],
+  m1_us_opt_out:         ['US', 'CA'],
+  m1_eu_imprint:         ['EU'],
+  m2_cmp_present:        ['EU', 'UK'],
+  m2_privacy_link:       ['EU', 'UK', 'US'],
+  m2_ccpa_opt_out:       ['US', 'CA'],
+  m3_hreflang:           ['EU', 'UK', 'US', 'CA', 'AU'],
+  m3_localization_form:  ['EU', 'UK', 'US', 'CA', 'AU'],
+  m3_currency_selector:  ['EU', 'UK', 'US', 'CA', 'AU'],
+  m3_enabled_currencies: ['EU', 'UK', 'US', 'CA', 'AU'],
+};
+
+// Plain-language context replacing severity numbers
+const CHECK_CONTEXT: Record<string, string> = {
+  m1_refund_policy:      'Required to sell internationally',
+  m1_privacy_policy:     'Legal requirement in all target markets',
+  m1_terms_of_service:   'Legal requirement',
+  m1_shipping_policy:    'Expected by international customers',
+  m1_eu_withdrawal:      'EU / UK Consumer Rights Directive',
+  m1_us_opt_out:         'California CCPA / CPRA',
+  m1_eu_imprint:         'German law (§5 DDG) & equivalent EU states',
+  m2_cmp_present:        'Required before advertising to EU / UK customers',
+  m2_privacy_link:       'GDPR Article 13 — easy access to privacy info',
+  m2_ccpa_opt_out:       'Required if selling to California residents',
+  m3_hreflang:           'International SEO & search routing',
+  m3_localization_form:  'Lets customers switch market or language',
+  m3_currency_selector:  'Local currency display for international shoppers',
+  m3_enabled_currencies: 'Multi-currency checkout experience',
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function isFixNow(f: Finding): boolean {
   return f.status === 'fail' && f.severity >= 80;
-}
-
-function displayStatus(f: Finding): 'issue' | 'attention' | 'ok' {
-  if (f.status === 'fail') return 'issue';
-  if (f.status === 'warn' || f.status === 'not_detected') return 'attention';
-  return 'ok';
 }
 
 function scColor(s: number): string {
   return s >= 80 ? 'var(--good)' : s >= 60 ? 'var(--seal)' : 'var(--crit)';
 }
 
-function computeMarketScore(findings: Finding[], market: string): number {
-  const rel = findings.filter(f => {
-    const mks = MODULE_MARKETS[f.module] ?? ['EU','UK','US','CA','AU'];
-    return mks.includes(market) && ['pass','warn','fail'].includes(f.status);
-  });
-  if (!rel.length) return 85;
-  let pen = 0;
-  rel.forEach(f => {
-    if (f.status === 'fail') pen += f.severity * 0.18;
-    else if (f.status === 'warn') pen += f.severity * 0.06;
-  });
-  return Math.max(25, Math.min(100, Math.round(100 - pen)));
+function getCheckMarkets(f: Finding): string[] {
+  if (f.checkId in CHECK_MARKETS) return CHECK_MARKETS[f.checkId];
+  if (f.checkId.startsWith('m2_tracker_')) return ['EU', 'UK'];
+  if (f.checkId.startsWith('m4_axe_')) return ['EU'];
+  return MODULE_MARKETS[f.module] ?? ['EU', 'UK', 'US', 'CA', 'AU'];
+}
+
+function getAffectedMarkets(finding: Finding, selected: string[]): string[] {
+  return getCheckMarkets(finding).filter(m => selected.includes(m));
+}
+
+function getContext(finding: Finding): string {
+  if (finding.checkId in CHECK_CONTEXT) return CHECK_CONTEXT[finding.checkId];
+  if (finding.checkId.startsWith('m2_tracker_')) return 'GDPR — must not fire before user consent';
+  if (finding.checkId.startsWith('m4_axe_')) return 'European Accessibility Act (EAA)';
+  return '';
+}
+
+function marketStatusInfo(issues: Finding[]): { label: string; color: string; bg: string; border: string } {
+  const hasFail = issues.some(f => f.status === 'fail');
+  const hasHighSev = issues.some(f => f.severity >= 75);
+  if (hasFail && hasHighSev) return { label: 'Blocked',    color: 'var(--crit)', bg: 'var(--crit-bg)',  border: '#efc8be' };
+  if (hasFail)               return { label: 'At risk',    color: 'var(--high)', bg: 'var(--high-bg)',  border: '#e8ceaa' };
+  if (issues.length > 0)     return { label: 'Needs work', color: 'var(--seal)', bg: 'var(--seal-soft)', border: '#e8d0a8' };
+  return                            { label: 'Ready',      color: 'var(--good)', bg: 'var(--good-bg)',  border: '#b8dac8' };
 }
 
 function computeQualifiedOut(a: IntakeAnswers): Array<{ name: string; why: string }> {
@@ -189,35 +241,45 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-function SevBadge({ sev }: { sev: number }) {
-  const configs: Record<string, { bg: string; border: string; color: string; label: string }> = {
-    crit: { bg: 'var(--crit-bg)', border: '#f0cfc7', color: 'var(--crit)', label: 'critical' },
-    high: { bg: 'var(--high-bg)', border: '#f0dec2', color: 'var(--high)', label: 'high' },
-    med:  { bg: 'var(--med-bg)',  border: '#ece3bd', color: 'var(--med)',  label: 'medium' },
-    low:  { bg: 'var(--low-bg)',  border: '#d6e2da', color: 'var(--low)',  label: 'low' },
-  };
-  const band = sev >= 80 ? 'crit' : sev >= 65 ? 'high' : sev >= 45 ? 'med' : 'low';
-  const c = configs[band];
+
+function MarketCard({ market, findings }: { market: string; findings: Finding[] }) {
+  const issues = findings
+    .filter(f => getAffectedMarkets(f, [market]).length > 0 && (f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected'))
+    .sort((a, b) => b.severity - a.severity);
+  const info = marketStatusInfo(issues);
+  const topIssues = issues.slice(0, 3);
   return (
-    <div style={{ width: 54, flexShrink: 0, textAlign: 'center', borderRadius: 9, padding: '8px 0', border: `1px solid ${c.border}`, background: c.bg, color: c.color }}>
-      <b style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 20, display: 'block', lineHeight: 1 }}>{sev}</b>
-      <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 8.5, letterSpacing: '.8px', textTransform: 'uppercase', display: 'block', marginTop: 3, opacity: .85 }}>{c.label}</span>
+    <div style={{ background: 'var(--card)', border: `1px solid ${info.border}`, borderRadius: 13, padding: '16px 18px', flex: '1 1 150px', minWidth: 140 }}>
+      <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: '1.4px', fontWeight: 500, color: 'var(--mut-2)', textTransform: 'uppercase', marginBottom: 8 }}>{market}</div>
+      <div style={{ display: 'inline-flex', alignItems: 'center', background: info.bg, color: info.color, border: `1px solid ${info.border}`, borderRadius: 7, padding: '5px 10px', marginBottom: 10 }}>
+        <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 14, letterSpacing: '.2px' }}>{info.label}</span>
+      </div>
+      {topIssues.length > 0 ? topIssues.map(f => (
+        <div key={f.checkId} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 5 }}>
+          <span style={{ color: info.color, fontSize: 10, marginTop: 2, flexShrink: 0 }}>↳</span>
+          <span style={{ fontSize: 11.5, color: 'var(--mut)', lineHeight: 1.4 }}>{f.title}</span>
+        </div>
+      )) : (
+        <div style={{ fontSize: 11.5, color: 'var(--good)', marginTop: 4 }}>All checks clear</div>
+      )}
     </div>
   );
 }
 
-function FindingRow({ finding }: { finding: Finding }) {
+function FindingCard({ finding, selectedMarkets }: { finding: Finding; selectedMarkets: string[] }) {
   const [open, setOpen] = useState(false);
   const fixNow = isFixNow(finding);
-  const ds = displayStatus(finding);
+  const markets = getAffectedMarkets(finding, selectedMarkets);
+  const context = getContext(finding);
 
-  const pillConfigs: Record<string, { bg: string; color: string }> = {
-    issue:     { bg: 'var(--crit-bg)', color: 'var(--crit)' },
-    attention: { bg: 'var(--high-bg)', color: 'var(--high)' },
-    ok:        { bg: 'var(--good-bg)', color: 'var(--good)' },
+  const ICON: Record<string, { char: string; bg: string; color: string; border: string }> = {
+    fail:         { char: '✕', bg: 'var(--crit-bg)', color: 'var(--crit)', border: '#efc8be' },
+    warn:         { char: '!', bg: 'var(--high-bg)', color: 'var(--high)', border: '#e8ceaa' },
+    not_detected: { char: '?', bg: '#f0f2f7',        color: 'var(--mut)',  border: 'var(--line)' },
+    pass:         { char: '✓', bg: 'var(--good-bg)', color: 'var(--good)', border: '#b8dac8' },
+    error:        { char: '⚠', bg: '#fdf1ec',        color: 'var(--high)', border: 'var(--line)' },
   };
-  const pill = pillConfigs[fixNow ? 'issue' : ds] ?? pillConfigs.ok;
-  const pillLabel = fixNow ? 'fix now' : ds;
+  const icon = ICON[finding.status] ?? ICON.error;
 
   return (
     <div
@@ -225,52 +287,48 @@ function FindingRow({ finding }: { finding: Finding }) {
       style={{
         background: 'var(--card)',
         border: `1px solid ${fixNow ? '#eccabc' : 'var(--line)'}`,
-        borderRadius: 12, padding: '16px 18px', display: 'flex', gap: 16, alignItems: 'flex-start',
-        boxShadow: fixNow ? '0 1px 2px rgba(194,64,47,.08)' : '0 1px 2px rgba(14,22,38,.04)',
-        cursor: 'pointer',
+        borderRadius: 12, padding: '14px 16px', cursor: 'pointer',
+        boxShadow: fixNow ? '0 1px 3px rgba(194,64,47,.07)' : '0 1px 2px rgba(14,22,38,.03)',
       }}
     >
-      <SevBadge sev={finding.severity} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 600, fontSize: 14.5 }}>{finding.title}</span>
-          <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: '.4px', borderRadius: 5, padding: '2px 7px', textTransform: 'uppercase', fontWeight: 500, background: pill.bg, color: pill.color }}>{pillLabel}</span>
-          <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10.5, color: 'var(--mut-2)', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--good)', display: 'inline-block' }} />
-            Detected on site
-          </span>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 8, background: icon.bg, border: `1px solid ${icon.border}`, color: icon.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 }}>
+          {icon.char}
         </div>
-        {finding.suggestion && (
-          <div style={{ fontSize: 13, color: '#43506a', marginTop: 7 }}>{finding.suggestion}</div>
-        )}
-        {open && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-2)' }}>
-            {(finding.evidence?.url || finding.evidence?.value || finding.evidence?.snippet) && (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.8px', color: 'var(--mut-2)', marginBottom: 6 }}>Evidence</div>
-                {finding.evidence.url && <code style={{ fontSize: 11.5, background: '#f3f5f9', border: '1px solid var(--line-2)', borderRadius: 6, padding: '2px 8px', color: '#43506a', display: 'block', width: 'fit-content' }}>{finding.evidence.url}</code>}
-                {finding.evidence.value && <p style={{ fontSize: 12, color: 'var(--mut)', marginTop: 4 }}>{finding.evidence.value}</p>}
-                {finding.evidence.snippet && <pre style={{ fontSize: 11.5, background: '#f3f5f9', border: '1px solid var(--line-2)', borderRadius: 6, padding: 8, color: 'var(--mut)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: 4 }}>{finding.evidence.snippet}</pre>}
-              </div>
-            )}
-            {finding.confidence !== 'high' && (
-              <p style={{ fontSize: 11, color: 'var(--mut-2)', fontStyle: 'italic', marginBottom: 6 }}>Confidence: {finding.confidence}</p>
-            )}
-            {finding.tools && finding.tools.length > 0 && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--mut-2)', marginRight: 2 }}>Tools</span>
-                {finding.tools.map(t => (
-                  <span key={t} style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--mut)', background: '#f3f5f9', border: '1px solid var(--line-2)', borderRadius: 6, padding: '2px 8px' }}>{t}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>{finding.title}</span>
+            {fixNow && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 9, letterSpacing: '.5px', background: 'var(--crit-bg)', color: 'var(--crit)', border: '1px solid #eccabc', borderRadius: 4, padding: '2px 6px', textTransform: 'uppercase', fontWeight: 500 }}>fix now</span>}
+            {markets.length > 0 && (
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                {markets.map(m => (
+                  <span key={m} style={{ fontFamily: "'IBM Plex Mono'", fontSize: 9.5, letterSpacing: '.6px', background: '#f0f2f7', color: 'var(--mut)', border: '1px solid var(--line-2)', borderRadius: 4, padding: '2px 6px', textTransform: 'uppercase' }}>{m}</span>
                 ))}
               </div>
             )}
           </div>
-        )}
+          {context && <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--mut-2)', marginTop: 3 }}>{context}</div>}
+          {finding.suggestion && <div style={{ fontSize: 13, color: '#43506a', marginTop: 6, lineHeight: 1.55 }}>{finding.suggestion}</div>}
+        </div>
+        <span style={{ color: 'var(--mut-2)', fontSize: 11, flexShrink: 0, alignSelf: 'center' }}>{open ? '▲' : '▼'}</span>
       </div>
-      <span style={{ color: 'var(--mut-2)', fontSize: 11, flexShrink: 0, alignSelf: 'center', marginTop: 2 }}>{open ? '▲' : '▼'}</span>
+      {open && (finding.evidence?.url || finding.evidence?.value || finding.evidence?.snippet || finding.confidence !== 'high') && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line-2)', paddingLeft: 42 }}>
+          {(finding.evidence?.url || finding.evidence?.value || finding.evidence?.snippet) && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.8px', color: 'var(--mut-2)', marginBottom: 5 }}>Evidence</div>
+              {finding.evidence.url && <code style={{ fontSize: 11, background: '#f3f5f9', border: '1px solid var(--line-2)', borderRadius: 5, padding: '2px 7px', color: '#43506a', display: 'block', width: 'fit-content', marginBottom: 3 }}>{finding.evidence.url}</code>}
+              {finding.evidence.value && <p style={{ fontSize: 12, color: 'var(--mut)', marginTop: 3 }}>{finding.evidence.value}</p>}
+              {finding.evidence.snippet && <pre style={{ fontSize: 11, background: '#f3f5f9', border: '1px solid var(--line-2)', borderRadius: 6, padding: 8, color: 'var(--mut)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: 3 }}>{finding.evidence.snippet}</pre>}
+            </>
+          )}
+          {finding.confidence !== 'high' && <p style={{ fontSize: 11, color: 'var(--mut-2)', fontStyle: 'italic', marginTop: 4 }}>Confidence: {finding.confidence}</p>}
+        </div>
+      )}
     </div>
   );
 }
+
 
 // ── Main component ─────────────────────────────────────────────────────────────
 const Home: NextPage = () => {
@@ -281,7 +339,7 @@ const Home: NextPage = () => {
   const [apiError, setApiError] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState(0);
   const [visibleLines, setVisibleLines] = useState<number[]>([]);
-  const [filter, setFilter]   = useState('all');
+  const [filter, setFilter]   = useState('action');
   const [domainShake, setDomainShake] = useState(false);
 
   const apiDoneRef  = useRef(false);
@@ -374,7 +432,7 @@ const Home: NextPage = () => {
   function finalize() {
     if (apiDataRef.current) {
       setResult(apiDataRef.current);
-      setFilter('all');
+      setFilter('action');
     }
     if (apiErrRef.current) setApiError(apiErrRef.current);
     go('results');
@@ -395,11 +453,13 @@ const Home: NextPage = () => {
     ? { h: 'Conditional',         p: 'Launchable after the fix-now items are closed.' }
     : { h: 'Not launch-ready',    p: 'Hard blockers open in one or more target markets.' };
 
+  const actionFindings  = findings.filter(f => f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected');
+  const passFindings    = findings.filter(f => f.status === 'pass');
+
   const filteredFindings = findings.filter(f => {
-    if (filter === 'fix')       return isFixNow(f);
-    if (filter === 'issue')     return f.status === 'fail';
-    if (filter === 'attention') return f.status === 'warn' || f.status === 'not_detected';
-    if (filter === 'clear')     return f.status === 'pass';
+    if (filter === 'action') return f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected';
+    if (filter === 'fix')    return isFixNow(f);
+    if (filter === 'pass')   return f.status === 'pass';
     return f.status !== 'error';
   });
 
@@ -521,7 +581,7 @@ const Home: NextPage = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: 26, flexWrap: 'wrap', marginTop: 38, paddingTop: 24, borderTop: '1px solid #213149' }}>
-                  {[['25','readiness checks'],['5','jurisdictions covered'],['1–100','severity per finding']].map(([b, label]) => (
+                  {[['25','compliance checks'],['5','markets covered'],['fix now','vs nice-to-have']].map(([b, label]) => (
                     <div key={label} style={{ fontSize: 12.5, color: '#9aa9c6' }}>
                       <b style={{ display: 'block', fontFamily: "'Space Grotesk'", fontWeight: 700, color: '#fff', fontSize: 20, marginBottom: 2 }}>{b}</b>
                       {label}
@@ -632,108 +692,101 @@ const Home: NextPage = () => {
 
             {result && (
               <>
-                <div style={{ marginBottom: 26 }}>
-                  <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--seal)', fontWeight: 500 }}>Step 3 · Findings for <span style={{ fontFamily: "'IBM Plex Mono'" }}>{domain}</span></div>
-                  <h2 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 26, letterSpacing: '-.3px', marginTop: 8 }}>Launch readiness report</h2>
+                {/* ── Header ── */}
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--seal)', fontWeight: 500 }}>Step 3 · {domain}</div>
+                  <h2 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 26, letterSpacing: '-.3px', marginTop: 6 }}>Launch readiness report</h2>
                 </div>
 
-                {/* Summary grid */}
-                <div className="summary-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px,300px) 1fr', gap: 18, marginBottom: 20 }}>
-                  {/* Score box */}
-                  <div style={{ background: 'var(--ink)', color: '#fff', borderRadius: 14, padding: 24, display: 'flex', gap: 20, alignItems: 'center', boxShadow: '0 1px 2px rgba(14,22,38,.05),0 8px 24px rgba(14,22,38,.06)' }}>
-                    <ScoreRing score={score} />
-                    <div>
-                      <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--seal)' }}>Verdict</div>
-                      <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 18, margin: '6px 0 4px' }}>{verdict.h}</h3>
-                      <p style={{ fontSize: 12.5, color: '#aab9d4', maxWidth: '24ch' }}>{verdict.p}</p>
-                    </div>
+                {/* ── Score + stats ── */}
+                <div style={{ background: 'var(--ink)', color: '#fff', borderRadius: 14, padding: '20px 24px', display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, boxShadow: '0 1px 2px rgba(14,22,38,.05),0 8px 24px rgba(14,22,38,.06)' }}>
+                  <ScoreRing score={score} />
+                  <div>
+                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--seal)' }}>Overall verdict</div>
+                    <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 20, margin: '5px 0 3px' }}>{verdict.h}</h3>
+                    <p style={{ fontSize: 13, color: '#aab9d4', maxWidth: '32ch' }}>{verdict.p}</p>
                   </div>
-
-                  {/* Stats + markets panel */}
-                  <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, padding: '20px 22px', boxShadow: '0 1px 2px rgba(14,22,38,.05),0 8px 24px rgba(14,22,38,.06)' }}>
-                    <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', marginBottom: 16 }}>
-                      {[
-                        { val: fixNows.length, label: 'Fix right away', color: 'var(--crit)' },
-                        { val: fails,           label: 'Open issues',    color: 'var(--high)' },
-                        { val: warns,           label: 'Needs attention', color: 'var(--med)' },
-                        { val: passes,          label: 'Clear',          color: 'var(--good)' },
-                      ].map(({ val, label, color }) => (
-                        <div key={label} style={{ minWidth: 78 }}>
-                          <b style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 24, display: 'block', lineHeight: 1, color }}>{val}</b>
-                          <div style={{ fontSize: 11.5, color: 'var(--mut)', marginTop: 3 }}>{label}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10.5, letterSpacing: '1.4px', textTransform: 'uppercase', color: 'var(--mut-2)', marginBottom: 9 }}>Readiness by jurisdiction</div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {answers.markets.map(m => {
-                        const s = computeMarketScore(findings, m);
-                        return (
-                          <div key={m} style={{ border: '1px solid var(--line)', borderRadius: 9, padding: '7px 11px', display: 'flex', alignItems: 'center', gap: 9, fontSize: 13 }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: scColor(s), display: 'inline-block' }} />
-                            <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--mut)', letterSpacing: 1 }}>{m}</span>
-                            <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 15, color: scColor(s) }}>{s}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Fix right away block */}
-                {fixNows.length > 0 && (
-                  <div style={{ border: '1px solid #f0d3c8', background: 'linear-gradient(180deg,#fdf1ec,#fff)', borderRadius: 14, padding: '18px 20px', marginBottom: 22, boxShadow: '0 1px 2px rgba(14,22,38,.05),0 8px 24px rgba(14,22,38,.06)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 15, color: 'var(--crit)', marginBottom: 14 }}>
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1.5 14.5 13H1.5L8 1.5Z" stroke="#C2402F" strokeWidth="1.4" strokeLinejoin="round"/><path d="M8 6v3.2M8 11.2h.01" stroke="#C2402F" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                      Fix right away · {fixNows.length} item{fixNows.length > 1 ? 's' : ''}
-                      <span style={{ marginLeft: 'auto', fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: 1, color: '#b06a52', background: '#fbe6de', border: '1px solid #f0d0c4', borderRadius: 6, padding: '3px 8px', textTransform: 'uppercase' }}>blockers</span>
-                    </div>
-                    {fixNows.map((f, i) => (
-                      <div key={f.checkId} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '11px 0', borderTop: i > 0 ? '1px dashed #f0d8cf' : undefined }}>
-                        <SevBadge sev={f.severity} />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14 }}>{f.title}</div>
-                          <div style={{ fontSize: 12.5, color: 'var(--mut)', marginTop: 2 }}>{f.suggestion}</div>
-                        </div>
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                    {[
+                      { val: fixNows.length, label: 'Fix right away', color: 'var(--crit)' },
+                      { val: fails,          label: 'Issues',         color: 'var(--high)' },
+                      { val: warns + notDet, label: 'Needs attention', color: '#d4af70' },
+                      { val: passes,         label: 'Passing',        color: 'var(--good)' },
+                    ].map(({ val, label, color }) => (
+                      <div key={label} style={{ textAlign: 'center' }}>
+                        <b style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 26, display: 'block', lineHeight: 1, color }}>{val}</b>
+                        <div style={{ fontSize: 11, color: '#7e8fae', marginTop: 3, whiteSpace: 'nowrap' }}>{label}</div>
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* ── Market readiness ── */}
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10.5, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--mut-2)', marginBottom: 10 }}>Readiness by market</div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {answers.markets.map(m => (
+                      <MarketCard key={m} market={m} findings={findings} />
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── What needs fixing ── */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 16 }}>What needs fixing</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: actionFindings.length > 0 ? 'var(--crit)' : 'var(--good)', background: actionFindings.length > 0 ? 'var(--crit-bg)' : 'var(--good-bg)', border: `1px solid ${actionFindings.length > 0 ? '#efc8be' : '#b8dac8'}`, borderRadius: 6, padding: '2px 8px' }}>{actionFindings.length} item{actionFindings.length !== 1 ? 's' : ''}</span>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                      {[['action','Needs action'], ['fix','Fix now only'], ['all','All findings']].map(([k, lab]) => (
+                        <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? 'var(--ink)' : 'var(--line)'}`, background: filter === k ? 'var(--ink)' : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 7, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>{lab}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {filteredFindings.length === 0
+                      ? <div style={{ background: 'var(--good-bg)', border: '1px solid #b8dac8', borderRadius: 12, padding: '20px 22px', color: 'var(--good)', fontSize: 14, fontWeight: 500 }}>✓ No issues found in this view.</div>
+                      : filteredFindings.map((f, i) => <FindingCard key={`${f.checkId}-${i}`} finding={f} selectedMarkets={answers.markets} />)
+                    }
+                  </div>
+                </div>
+
+                {/* ── Passing checks (collapsed) ── */}
+                {passFindings.length > 0 && (
+                  <details style={{ marginTop: 18, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--card)', overflow: 'hidden' }}>
+                    <summary style={{ cursor: 'pointer', padding: '13px 18px', fontSize: 13.5, fontWeight: 600, color: 'var(--good)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#1F8A5B" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      {passFindings.length} checks passing
+                      <span style={{ marginLeft: 'auto', fontFamily: "'IBM Plex Mono'", fontSize: 10, color: 'var(--mut-2)' }}>expand ▾</span>
+                    </summary>
+                    <div style={{ padding: '2px 18px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {passFindings.map((f, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: i > 0 ? '1px solid var(--line-2)' : undefined }}>
+                          <span style={{ color: 'var(--good)', fontSize: 13 }}>✓</span>
+                          <span style={{ fontSize: 13, fontWeight: 500 }}>{f.title}</span>
+                          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                            {getAffectedMarkets(f, answers.markets).map(m => (
+                              <span key={m} style={{ fontFamily: "'IBM Plex Mono'", fontSize: 9, color: 'var(--mut-2)', background: '#f0f2f7', border: '1px solid var(--line-2)', borderRadius: 3, padding: '1px 5px', textTransform: 'uppercase' }}>{m}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 )}
 
-                {/* Filter toolbar */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '6px 0 14px' }}>
-                  <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--mut-2)', marginRight: 6 }}>Findings</span>
-                  {[
-                    ['all',       'All',       findings.filter(f => f.status !== 'error').length],
-                    ['fix',       'Fix now',   fixNows.length],
-                    ['issue',     'Issues',    fails],
-                    ['attention', 'Attention', warns + notDet],
-                    ['clear',     'Clear',     passes],
-                  ].map(([k, lab, count]) => (
-                    <button key={k} onClick={() => setFilter(k as string)} style={{ border: `1px solid ${filter === k ? 'var(--ink)' : 'var(--line)'}`, background: filter === k ? 'var(--ink)' : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>
-                      {lab}<span style={{ fontFamily: "'IBM Plex Mono'", opacity: .7, marginLeft: 5 }}>{count}</span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Findings list */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {filteredFindings.length === 0 && (
-                    <div style={{ textAlign: 'center', color: 'var(--mut)', padding: 30, fontSize: 14 }}>Nothing in this filter.</div>
-                  )}
-                  {filteredFindings.map((f, i) => <FindingRow key={`${f.checkId}-${i}`} finding={f} />)}
-                </div>
-
-                {/* Qualified out */}
+                {/* ── Not applicable (qualified out) ── */}
                 {qualifiedOut.length > 0 && (
-                  <details style={{ marginTop: 24, border: '1px dashed var(--line)', borderRadius: 12, background: '#f5f7fa', overflow: 'hidden' }}>
-                    <summary style={{ cursor: 'pointer', padding: '14px 18px', fontSize: 13.5, fontWeight: 600, color: 'var(--mut)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span>▸</span> Qualified out by your answers ({qualifiedOut.length})
+                  <details style={{ marginTop: 12, border: '1px dashed var(--line)', borderRadius: 12, background: '#f8f9fb', overflow: 'hidden' }}>
+                    <summary style={{ cursor: 'pointer', padding: '13px 18px', fontSize: 13, fontWeight: 600, color: 'var(--mut)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, background: '#eef0f4', color: 'var(--mut-2)', border: '1px solid var(--line)', borderRadius: 5, padding: '2px 7px' }}>{qualifiedOut.length}</span>
+                      Checks skipped — don't apply based on your answers
+                      <span style={{ marginLeft: 'auto', fontFamily: "'IBM Plex Mono'", fontSize: 10, color: 'var(--mut-2)' }}>expand ▾</span>
                     </summary>
-                    <div style={{ padding: '2px 18px 16px' }}>
+                    <div style={{ padding: '2px 18px 14px' }}>
                       {qualifiedOut.map((o, i) => (
-                        <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderTop: i > 0 ? '1px solid var(--line-2)' : undefined, fontSize: 13 }}>
-                          <div style={{ fontWeight: 600, minWidth: 220, color: 'var(--ink)' }}>{o.name}</div>
+                        <div key={i} style={{ display: 'flex', gap: 12, padding: '8px 0', borderTop: i > 0 ? '1px solid var(--line-2)' : undefined, fontSize: 13 }}>
+                          <div style={{ fontWeight: 600, minWidth: 200, color: 'var(--ink)' }}>{o.name}</div>
                           <div style={{ color: 'var(--mut)' }}>{o.why}</div>
                         </div>
                       ))}
@@ -741,19 +794,19 @@ const Home: NextPage = () => {
                   </details>
                 )}
 
-                {/* Scanner errors (module-level failures) */}
+                {/* ── Scanner errors ── */}
                 {result.errors.length > 0 && (
-                  <div style={{ marginTop: 16, background: '#fdf1ec', border: '1px solid #f0d3c8', borderRadius: 12, padding: '14px 18px' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--high)', marginBottom: 8 }}>Scanner notes</div>
+                  <div style={{ marginTop: 14, background: '#fdf1ec', border: '1px solid #f0d3c8', borderRadius: 12, padding: '13px 18px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--high)', marginBottom: 6 }}>Scanner notes</div>
                     {result.errors.map((e, i) => (
                       <p key={i} style={{ fontSize: 12, color: 'var(--high)', fontFamily: "'IBM Plex Mono'" }}>{e.module}/{e.checkId}: {e.message}</p>
                     ))}
                   </div>
                 )}
 
-                {/* Footer */}
+                {/* ── Footer ── */}
                 <div style={{ marginTop: 26, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <div style={{ fontSize: 11.5, color: 'var(--mut-2)', maxWidth: '52ch', marginRight: 'auto' }}>Results based on automated crawl. Severity blends legal weight, enforcement, and detected gap. Not legal advice — confirm per category with counsel.</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--mut-2)', maxWidth: '52ch', marginRight: 'auto' }}>Results based on automated crawl. Not legal advice — verify requirements with counsel before launch.</div>
                   <button onClick={() => go('intake')} style={{ border: '1px solid var(--line)', background: 'transparent', color: 'var(--mut)', borderRadius: 11, padding: '10px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter' }}>← Edit answers</button>
                   <button
                     onClick={() => {
@@ -762,9 +815,7 @@ const Home: NextPage = () => {
                       a.click();
                     }}
                     style={{ border: '1px solid var(--line)', background: 'transparent', color: 'var(--mut)', borderRadius: 11, padding: '10px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter' }}
-                  >
-                    ↓ Export JSON
-                  </button>
+                  >↓ Export JSON</button>
                   <button onClick={() => { setResult(null); setDomain(''); go('domain'); }} style={{ border: 0, background: 'var(--ink)', color: '#fff', borderRadius: 11, padding: '10px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter' }}>Audit another domain</button>
                 </div>
               </>

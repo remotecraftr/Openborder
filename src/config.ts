@@ -11,7 +11,7 @@ export const STATUS_MULTIPLIER: Record<string, number> = {
   fail: 1.0,
   warn: 0.5,
   pass: 0.0,
-  not_detected: 0.0,
+  not_detected: 0.35,
   error: 0.0,
 };
 
