@@ -68,6 +68,19 @@ export class AccessibilityModule extends BaseModule {
     try {
       const page = await browser.newPage();
       await page.goto(targetUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
+
+      // Shopify product pages can redirect into shop.app which has strict CSP blocking
+      // script injection. Fall back to the homepage if the page landed on a different origin.
+      const landedUrl = page.url();
+      const landedOrigin = new URL(landedUrl).origin;
+      const targetOrigin = new URL(targetUrl).origin;
+      const scanUrl = landedOrigin !== targetOrigin
+        ? this.crawler.baseUrl
+        : landedUrl;
+      if (landedOrigin !== targetOrigin) {
+        await page.goto(scanUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
+      }
+
       await page.addScriptTag({ content: getAxeSource() });
 
       const results = await page.evaluate(async () => {
@@ -83,6 +96,10 @@ export class AccessibilityModule extends BaseModule {
         const page2 = await browser.newPage();
         try {
           await page2.goto(secondUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
+          const landed2 = new URL(page2.url()).origin;
+          if (landed2 !== new URL(secondUrl).origin) {
+            await page2.goto(this.crawler.baseUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
+          }
           await page2.addScriptTag({ content: getAxeSource() });
           const results2 = await page2.evaluate(async () => {
             // @ts-expect-error axe injected globally
