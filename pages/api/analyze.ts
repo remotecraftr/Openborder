@@ -44,6 +44,8 @@ export default async function handler(
     return res.status(400).json({ error: 'Invalid domain format' });
   }
 
+  console.log('[analyze] BROWSER_WS_ENDPOINT set:', !!process.env.BROWSER_WS_ENDPOINT);
+
   try {
     const result = await analyze(clean);
     return res.status(200).json(result);
