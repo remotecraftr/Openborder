@@ -5,14 +5,18 @@ export const IS_SERVERLESS =
 
 // Set BROWSER_WS_ENDPOINT to a managed browser service (Browserless.io, BrowserBase, etc.)
 // to skip local Chromium entirely — no /tmp limit, no memory pressure, works on Vercel free.
-export const MANAGED_BROWSER = !!process.env.BROWSER_WS_ENDPOINT;
+// Use bracket notation — webpack's DefinePlugin replaces process.env.VAR with the build-time
+// value (undefined if not set locally), whereas process.env['VAR'] is left for runtime.
+export const MANAGED_BROWSER = !!process.env['BROWSER_WS_ENDPOINT'];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function launchBrowser(): Promise<any> {
   const { chromium } = await import('playwright-core');
 
-  if (process.env.BROWSER_WS_ENDPOINT) {
-    return chromium.connectOverCDP(process.env.BROWSER_WS_ENDPOINT);
+  const wsEndpoint = process.env['BROWSER_WS_ENDPOINT'];
+  if (wsEndpoint) {
+    console.log('[browser] connecting to managed browser:', wsEndpoint.slice(0, 40) + '...');
+    return chromium.connectOverCDP(wsEndpoint);
   }
 
   if (IS_SERVERLESS) {

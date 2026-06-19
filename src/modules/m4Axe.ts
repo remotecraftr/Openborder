@@ -31,18 +31,21 @@ const IMPACT_SEVERITY: Record<string, number> = {
   minor: 20,
 };
 
-const SKIP_FINDING = (reason: string, suggestion: string): Finding[] => [
-  {
-    module: 'accessibility',
-    checkId: 'm4_axe_unavailable',
-    title: 'Accessibility (axe-core) — Skipped',
-    status: 'error',
-    severity: 0,
-    confidence: 'high',
-    evidence: { value: reason },
-    suggestion,
-  },
-];
+const SKIP_FINDING = (reason: string, suggestion: string): Finding[] => {
+  console.error('[m4Axe] SKIP:', reason);
+  return [
+    {
+      module: 'accessibility',
+      checkId: 'm4_axe_unavailable',
+      title: 'Accessibility (axe-core) — Skipped',
+      status: 'error',
+      severity: 0,
+      confidence: 'high',
+      evidence: { value: reason },
+      suggestion,
+    },
+  ];
+};
 
 export class AccessibilityModule extends BaseModule {
   readonly moduleId = 'accessibility';
