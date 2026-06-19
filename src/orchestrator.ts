@@ -5,6 +5,7 @@ import { ConsentTrackingModule } from './modules/m2Consent';
 import { LocalizationModule } from './modules/m3Locale';
 import { AccessibilityModule } from './modules/m4Axe';
 import { TaxDisplayModule } from './modules/m5Tax';
+import { MANAGED_BROWSER } from './browser';
 import type { AuditResult, Finding, ErrorRecord } from './types';
 
 export interface AnalyzeOptions {
@@ -32,8 +33,6 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
 
   const platform = (await detectShopify(crawler)) ? 'shopify' : 'unknown';
 
-  // Non-Playwright modules run in parallel; Playwright modules run sequentially after
-  // to avoid spawning two Chromium instances simultaneously (causes OOM on Vercel).
   const staticModules = [
     new LegalPagesModule(crawler),
     new ConsentTrackingModule(crawler),
@@ -50,12 +49,20 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
   const allFindings: Finding[] = [];
   const errors: ErrorRecord[] = [];
 
-  // Run static modules in parallel, then Playwright modules one at a time
   const staticResults = await Promise.allSettled(staticModules.map(m => m.run()));
-  const playwrightResults: PromiseSettledResult<Finding[]>[] = [];
-  for (const m of playwrightModules) {
-    playwrightResults.push(await Promise.allSettled([m.run()]).then(r => r[0]));
+
+  // With a managed browser service the browser runs remotely — no local memory pressure,
+  // so M3 and M4 can run in parallel. Without it, run sequentially to avoid OOM on serverless.
+  let playwrightResults: PromiseSettledResult<Finding[]>[];
+  if (MANAGED_BROWSER) {
+    playwrightResults = await Promise.allSettled(playwrightModules.map(m => m.run()));
+  } else {
+    playwrightResults = [];
+    for (const m of playwrightModules) {
+      playwrightResults.push(await Promise.allSettled([m.run()]).then(r => r[0]));
+    }
   }
+
   const tailResults = await Promise.allSettled(tailModules.map(m => m.run()));
   const results = [...staticResults, ...playwrightResults, ...tailResults];
 

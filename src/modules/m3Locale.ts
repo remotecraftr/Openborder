@@ -52,7 +52,7 @@ export class LocalizationModule extends BaseModule {
     const browser = await launchBrowser();
     try {
       const page = await browser.newPage();
-      await page.goto(this.crawler.baseUrl, { timeout: 15_000, waitUntil: 'networkidle' });
+      await page.goto(this.crawler.baseUrl, { timeout: 15_000, waitUntil: 'load' });
       return await page.content();
     } finally {
       await browser.close();
