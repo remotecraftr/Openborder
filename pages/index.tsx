@@ -283,7 +283,7 @@ function ScoreRing({ score }: { score: number }) {
 
 function MarketCard({ market, findings }: { market: string; findings: Finding[] }) {
   const issues = findings
-    .filter(f => getAffectedMarkets(f, [market]).length > 0 && (f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected'))
+    .filter(f => getAffectedMarkets(f, [market]).length > 0 && (f.status === 'fail' || f.status === 'warn'))
     .sort((a, b) => b.severity - a.severity);
   const info = marketStatusInfo(issues);
   const topIssues = issues.slice(0, 3);
