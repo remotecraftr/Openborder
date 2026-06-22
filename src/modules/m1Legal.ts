@@ -57,20 +57,42 @@ export class LegalPagesModule extends BaseModule {
       findings.push(finding);
     }
 
-    const refundFinding = findings.find(f => f.checkId === 'm1_refund_policy' && f.status === 'pass');
-    if (refundFinding) {
+    const refundFinding = findings.find(f => f.checkId === 'm1_refund_policy');
+    if (refundFinding?.status === 'pass') {
       const withdrawalFinding = await this.checkWithdrawalClause(
         refundFinding.evidence.url ?? `${this.crawler.baseUrl}/policies/refund-policy`
       );
       if (withdrawalFinding) findings.push(withdrawalFinding);
+    } else if (refundFinding?.status === 'not_detected') {
+      findings.push({
+        module: this.moduleId,
+        checkId: 'm1_eu_withdrawal',
+        title: 'Right of Withdrawal Clause (EU/UK)',
+        status: 'not_detected',
+        severity: 85,
+        confidence: 'low',
+        evidence: { url: refundFinding.evidence.url, value: 'Parent policy blocked by robots.txt' },
+        suggestion: `Cannot verify withdrawal clause because ${new URL(this.crawler.baseUrl).hostname}'s robots.txt blocks access to the refund policy.`,
+      });
     }
 
-    const privacyFinding = findings.find(f => f.checkId === 'm1_privacy_policy' && f.status === 'pass');
-    if (privacyFinding) {
+    const privacyFinding = findings.find(f => f.checkId === 'm1_privacy_policy');
+    if (privacyFinding?.status === 'pass') {
       const optOutFinding = await this.checkPrivacyOptOut(
         privacyFinding.evidence.url ?? `${this.crawler.baseUrl}/policies/privacy-policy`
       );
       if (optOutFinding) findings.push(optOutFinding);
+    } else if (privacyFinding?.status === 'not_detected') {
+      findings.push({
+        module: this.moduleId,
+        checkId: 'm1_us_opt_out',
+        title: 'CCPA/CPRA "Do Not Sell or Share" Link',
+        status: 'not_detected',
+        severity: 75,
+        confidence: 'low',
+        evidence: { url: privacyFinding.evidence.url, value: 'Parent policy blocked by robots.txt' },
+        suggestion: `Cannot verify CCPA/CPRA opt-out because ${new URL(this.crawler.baseUrl).hostname}'s robots.txt blocks access to the privacy policy.`,
+      });
     }
 
     const imprintFinding = await this.checkEuImprint();
@@ -122,15 +144,18 @@ export class LegalPagesModule extends BaseModule {
         suggestion: '',
       };
     } catch (err) {
+      const isRobots = String(err).includes('robots.txt');
       return {
         module: this.moduleId,
         checkId: spec.checkId,
         title: spec.title,
-        status: 'error',
-        severity: 0,
+        status: isRobots ? 'not_detected' : 'error',
+        severity: isRobots ? spec.severity : 0,
         confidence: 'low',
         evidence: { url, value: String(err) },
-        suggestion: `Could not reach ${spec.path}. Verify the URL is accessible.`,
+        suggestion: isRobots
+          ? `${new URL(this.crawler.baseUrl).hostname}'s robots.txt file blocks access to ${spec.path}. We cannot automatically verify this policy.`
+          : `Could not reach ${spec.path}. Verify the URL is accessible.`,
       };
     }
   }

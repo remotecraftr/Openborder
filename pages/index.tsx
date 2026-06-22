@@ -576,13 +576,15 @@ const Home: NextPage = () => {
     ? { h: 'Conditional',         p: 'Launchable after the fix-now items are closed.' }
     : { h: 'Not launch-ready',    p: 'Hard blockers open in one or more target markets.' };
 
-  const actionFindings  = findings.filter(f => f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected');
-  const passFindings    = findings.filter(f => f.status === 'pass');
+  const actionFindings     = findings.filter(f => f.status === 'fail' || f.status === 'warn');
+  const undetectedFindings = findings.filter(f => f.status === 'not_detected');
+  const passFindings       = findings.filter(f => f.status === 'pass');
 
   const filteredFindings = findings.filter(f => {
-    if (filter === 'action') return f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected';
-    if (filter === 'fix')    return isFixNow(f);
-    if (filter === 'pass')   return f.status === 'pass';
+    if (filter === 'action')     return f.status === 'fail' || f.status === 'warn';
+    if (filter === 'undetected') return f.status === 'not_detected';
+    if (filter === 'fix')        return isFixNow(f);
+    if (filter === 'pass')       return f.status === 'pass';
     return f.status !== 'error';
   });
 
@@ -901,11 +903,12 @@ const Home: NextPage = () => {
                 {/* ── What needs fixing ── */}
                 <div style={{ marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                    <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 16 }}>{filter === 'pass' ? 'Checks passing' : 'What needs fixing'}</span>
-                    {filter !== 'pass' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: actionFindings.length > 0 ? 'var(--crit)' : 'var(--good)', background: actionFindings.length > 0 ? 'var(--crit-bg)' : 'var(--good-bg)', border: `1px solid ${actionFindings.length > 0 ? '#efc8be' : '#b8dac8'}`, borderRadius: 6, padding: '2px 8px' }}>{actionFindings.length} item{actionFindings.length !== 1 ? 's' : ''}</span>}
+                    <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 16 }}>{filter === 'pass' ? 'Checks passing' : filter === 'undetected' ? 'Undetected checks' : 'What needs fixing'}</span>
+                    {filter === 'action' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: actionFindings.length > 0 ? 'var(--crit)' : 'var(--good)', background: actionFindings.length > 0 ? 'var(--crit-bg)' : 'var(--good-bg)', border: `1px solid ${actionFindings.length > 0 ? '#efc8be' : '#b8dac8'}`, borderRadius: 6, padding: '2px 8px' }}>{actionFindings.length} item{actionFindings.length !== 1 ? 's' : ''}</span>}
+                    {filter === 'undetected' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--mut)', background: '#eef0f4', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 8px' }}>{undetectedFindings.length} item{undetectedFindings.length !== 1 ? 's' : ''}</span>}
                     {filter === 'pass' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--good)', background: 'var(--good-bg)', border: '1px solid #b8dac8', borderRadius: 6, padding: '2px 8px' }}>{passFindings.length} check{passFindings.length !== 1 ? 's' : ''}</span>}
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                      {[['action','Needs action'], ['fix','Fix now only'], ['pass', `Passed (${passes})`], ['all','All findings']].map(([k, lab]) => (
+                      {[['action','Needs action'], ['undetected', 'Undetected'], ['fix','Fix now only'], ['pass', `Passed (${passes})`], ['all','All findings']].map(([k, lab]) => (
                         <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : 'var(--line)'}`, background: filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 7, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>{lab}</button>
                       ))}
                     </div>
