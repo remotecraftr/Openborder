@@ -152,10 +152,16 @@ export class ConsentTrackingModule extends BaseModule {
   private checkGdprPrivacyLink($html: string): Finding {
     const $ = cheerio.load($html);
     const links = $('a').toArray();
+    let foundText = '';
     const hasPrivacyLink = links.some(el => {
       const href = $(el).attr('href') ?? '';
-      const text = $(el).text().toLowerCase();
-      return href.includes('privacy') || text.includes('privacy') || text.includes('datenschutz');
+      const text = $(el).text().trim();
+      const textLower = text.toLowerCase();
+      if (href.includes('privacy') || textLower.includes('privacy') || textLower.includes('datenschutz')) {
+        foundText = text || href;
+        return true;
+      }
+      return false;
     });
 
     if (hasPrivacyLink) {
@@ -166,7 +172,7 @@ export class ConsentTrackingModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'medium',
-        evidence: { url: this.crawler.baseUrl },
+        evidence: { url: this.crawler.baseUrl, value: `Link found: "${foundText}"` },
         suggestion: '',
       };
     }
@@ -193,7 +199,16 @@ export class ConsentTrackingModule extends BaseModule {
       /ccpa/i,
     ];
 
-    const found = ccpaPatterns.some(p => p.test(html));
+    let matchedText = '';
+    const found = ccpaPatterns.some(p => {
+      const match = html.match(p);
+      if (match) {
+        matchedText = match[0];
+        return true;
+      }
+      return false;
+    });
+
     if (found) {
       return {
         module: this.moduleId,
@@ -202,7 +217,7 @@ export class ConsentTrackingModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'medium',
-        evidence: { url: this.crawler.baseUrl },
+        evidence: { url: this.crawler.baseUrl, value: `Detected CCPA language: "${matchedText}"` },
         suggestion: '',
       };
     }
