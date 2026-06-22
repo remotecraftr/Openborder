@@ -20,17 +20,26 @@ export class LocalizationModule extends BaseModule {
     try {
       html = await this.fetchRenderedHtml();
     } catch (err) {
-      findings.push({
-        module: this.moduleId,
-        checkId: 'm3_hreflang',
-        title: 'hreflang Tags',
-        status: 'error',
-        severity: 0,
-        confidence: 'low',
-        evidence: { url: this.crawler.baseUrl, value: String(err) },
-        suggestion: 'Could not fetch homepage for localization check.',
-      });
-      return findings;
+      // Playwright failed — fall back to static HTML so all checks still run.
+      // This is better than aborting all M3 findings.
+      console.warn(`[m3] Playwright render failed, falling back to static HTML: ${String(err)}`);
+      try {
+        const result = await this.crawler.get('/');
+        html = result.text;
+      } catch (staticErr) {
+        // Both Playwright and static fetch failed — nothing we can do
+        findings.push({
+          module: this.moduleId,
+          checkId: 'm3_hreflang',
+          title: 'hreflang Tags',
+          status: 'error',
+          severity: 0,
+          confidence: 'low',
+          evidence: { url: this.crawler.baseUrl, value: String(staticErr) },
+          suggestion: 'Could not fetch homepage for localization check.',
+        });
+        return findings;
+      }
     }
 
     const $ = cheerio.load(html);
@@ -53,6 +62,13 @@ export class LocalizationModule extends BaseModule {
     try {
       const page = await browser.newPage();
       await page.goto(this.crawler.baseUrl, { timeout: 15_000, waitUntil: 'networkidle' });
+
+      // Shopify themes often lazy-load footer content (where currency/country
+      // selectors live). Scroll to bottom to trigger lazy-load, then wait for
+      // custom elements like <localization-form> to fully hydrate.
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(2000);
+
       return await page.content();
     } finally {
       await browser.close();
@@ -113,6 +129,7 @@ export class LocalizationModule extends BaseModule {
       $('select[name*="locale"], select[name*="country"], select[id*="locale"]').length > 0;
 
     if (form || hasLocaleSelect) {
+      const signal = form ? 'Localization form found in page source' : 'Locale/country select element found in page source';
       return {
         module: this.moduleId,
         checkId: 'm3_localization_form',
@@ -120,7 +137,7 @@ export class LocalizationModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'medium',
-        evidence: { url: this.crawler.baseUrl },
+        evidence: { url: this.crawler.baseUrl, value: signal },
         suggestion: '',
       };
     }
@@ -138,16 +155,74 @@ export class LocalizationModule extends BaseModule {
   }
 
   private checkCurrencySelector($: cheerio.CheerioAPI, html: string): Finding {
-    const currencySelectors = [
-      $('[data-currency-selector]').length > 0,
-      $('[id*="currency-selector"], [id*="currency_selector"]').length > 0,
-      /currency[-_]?switch|currency[-_]?select/i.test(html),
-      /presentmentCurrencies/i.test(html),
+    // Comprehensive Shopify currency selector detection
+    // Shopify themes use various patterns: localization forms, disclosure widgets,
+    // custom elements, and JS-based selectors. We check them all.
+    const signals: Array<{ label: string; match: boolean }> = [
+      // Direct currency selector attributes
+      { label: 'data-currency-selector attribute', match: $('[data-currency-selector]').length > 0 },
+      { label: 'data-currency attribute', match: $('[data-currency]').length > 0 },
+
+      // CSS class/id containing "currency"
+      { label: 'currency-related element (class/id)', match: $('[class*="currency"], [id*="currency"]').length > 0 },
+
+      // Form input with name="currency_code" (Shopify localization form standard)
+      { label: 'currency_code form input', match: $('input[name="currency_code"], select[name="currency_code"]').length > 0 },
+
+      // Shopify localization-form custom element containing currency signals
+      { label: 'localization-form with currency', match:
+        $('localization-form').length > 0 &&
+        ($('localization-form').html() ?? '').toLowerCase().includes('currency')
+      },
+
+      // Disclosure widget for currency (Shopify Dawn theme pattern)
+      { label: 'disclosure-currency element', match:
+        $('[data-disclosure-currency], [id*="disclosure-currency"], [class*="disclosure-currency"]').length > 0
+      },
+
+      // Any element with name attribute containing "currency"
+      { label: 'currency-named element', match: $('[name*="currency"]').length > 0 },
+
+      // Select elements with currency options (currency codes like USD, EUR, GBP)
+      { label: 'select with currency options', match:
+        $('select').toArray().some(el => {
+          const inner = $(el).html() ?? '';
+          return /\b(USD|EUR|GBP|CAD|AUD|JPY|CHF|SEK|NOK|DKK|NZD|SGD|HKD|KRW|MXN|BRL|INR|ZAR|PLN|CZK|HUF|RON|BGN|HRK|ISK)\b/.test(inner);
+        })
+      },
+
+      // Form with action="/localization" containing currency_code
+      { label: 'localization form with currency_code', match:
+        $('form[action*="localization"]').toArray().some(el => {
+          const inner = $(el).html() ?? '';
+          return inner.includes('currency_code') || inner.includes('currency');
+        })
+      },
+
+      // JS patterns
+      { label: 'currency-switch/select JS pattern', match: /currency[-_]?switch|currency[-_]?select|currency[-_]?picker|currency[-_]?dropdown/i.test(html) },
+      { label: 'Shopify.currency JS object', match: /Shopify\.currency/i.test(html) },
+      { label: 'presentmentCurrencies API', match: /presentmentCurrencies/i.test(html) },
+
+      // Currency symbols alongside currency code patterns (€, £, ¥, $ with codes)
+      { label: 'currency code + symbol in selector', match:
+        $('[class*="disclosure"], [class*="selector"], [class*="picker"], [class*="dropdown"]').toArray().some(el => {
+          const text = $(el).text();
+          return /\b(USD|EUR|GBP|CAD|AUD)\b/.test(text) && /[$€£¥]/.test(text);
+        })
+      },
     ];
 
-    const hasSelector = currencySelectors.some(Boolean);
+    const matched = signals.filter(s => s.match);
 
-    if (hasSelector) {
+    // Debug logging — helps diagnose detection issues in server logs
+    console.log(`[m3] Currency selector detection for ${this.crawler.baseUrl}:`);
+    for (const s of signals) {
+      console.log(`[m3]   ${s.match ? '✓' : '✗'} ${s.label}`);
+    }
+
+    if (matched.length > 0) {
+      const matchedLabels = matched.map(s => s.label).join(', ');
       return {
         module: this.moduleId,
         checkId: 'm3_currency_selector',
@@ -155,7 +230,7 @@ export class LocalizationModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'medium',
-        evidence: { url: this.crawler.baseUrl },
+        evidence: { url: this.crawler.baseUrl, value: `Detected via: ${matchedLabels}` },
         suggestion: '',
       };
     }
@@ -167,26 +242,63 @@ export class LocalizationModule extends BaseModule {
       status: 'not_detected',
       severity: 35,
       confidence: 'low',
-      evidence: { url: this.crawler.baseUrl, value: 'Not found in page source — may be JavaScript-rendered' },
-      suggestion: 'No currency selector found in page source. If your theme renders it via JavaScript, the static scanner may miss it. Verify customers can switch currency on your storefront.',
+      evidence: { url: this.crawler.baseUrl, value: 'No currency selector found in rendered page (checked via Playwright)' },
+      suggestion: 'No currency selector detected in the fully-rendered page. Verify customers can switch currency on your storefront.',
     };
   }
 
-  private checkEnabledCurrencies(_$: cheerio.CheerioAPI, html: string): Finding {
+  private checkEnabledCurrencies($: cheerio.CheerioAPI, html: string): Finding {
     const activeMatch = html.match(/Shopify\.currency\s*=\s*\{[^}]*"active"\s*:\s*"([A-Z]{3})"/);
     const presentmentMatch = html.match(/presentmentCurrencies\s*[=:]\s*(\[[^\]]+\])/);
     const multiCurrencyMatch = html.match(/"currencies"\s*:\s*\[([^\]]+)\]/);
 
     let currencies: string[] = [];
 
+    // Method 1: presentmentCurrencies JS array
     if (presentmentMatch) {
       try {
         currencies = JSON.parse(presentmentMatch[1]).filter((c: unknown) => typeof c === 'string');
       } catch { /* ignore */ }
-    } else if (multiCurrencyMatch) {
+    }
+
+    // Method 2: "currencies": [...] JSON
+    if (currencies.length <= 1 && multiCurrencyMatch) {
       currencies = multiCurrencyMatch[1]
         .match(/"([A-Z]{3})"/g)
         ?.map(m => m.replace(/"/g, '')) ?? [];
+    }
+
+    // Method 3: Scan DOM for currency codes inside selectors, forms, and disclosure elements
+    // This catches JS-rendered currency selectors that have multiple currency options
+    if (currencies.length <= 1) {
+      const CURRENCY_CODES = /\b(USD|EUR|GBP|CAD|AUD|JPY|CHF|SEK|NOK|DKK|NZD|SGD|HKD|KRW|MXN|BRL|INR|ZAR|PLN|CZK|HUF|RON|BGN|HRK|ISK)\b/g;
+      const domCurrencies = new Set<string>();
+
+      // Check select options, disclosure lists, localization forms, and currency-related elements
+      const selectors = [
+        'select option',
+        '[class*="disclosure"] li, [class*="disclosure"] a, [class*="disclosure"] button',
+        'localization-form option, localization-form li, localization-form a',
+        'form[action*="localization"] option, form[action*="localization"] li',
+        '[class*="currency"] option, [class*="currency"] li, [class*="currency"] a',
+        '[data-currency-selector] option, [data-currency-selector] li',
+        '[name="currency_code"] option',
+      ];
+
+      for (const sel of selectors) {
+        $(sel).each((_i, el) => {
+          const text = $(el).text();
+          const value = $(el).attr('value') ?? '';
+          const dataValue = $(el).attr('data-value') ?? '';
+          const combined = `${text} ${value} ${dataValue}`;
+          const matches = combined.match(CURRENCY_CODES);
+          if (matches) matches.forEach(c => domCurrencies.add(c));
+        });
+      }
+
+      if (domCurrencies.size > 1) {
+        currencies = [...domCurrencies];
+      }
     }
 
     if (currencies.length > 1) {
@@ -197,7 +309,7 @@ export class LocalizationModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'medium',
-        evidence: { url: this.crawler.baseUrl, value: currencies.join(', ') },
+        evidence: { url: this.crawler.baseUrl, value: `${currencies.length} currencies enabled: ${currencies.join(', ')}` },
         suggestion: '',
       };
     }

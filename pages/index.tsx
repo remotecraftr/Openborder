@@ -76,18 +76,57 @@ const FORM_GROUPS = [
   },
 ];
 
-const SCAN_LINES = [
-  ['Fetching storefront & theme assets', true, '200 OK'],
-  ['Mapping Shopify routes /products /cart /policies', true, '42 routes'],
-  ['Checking checkout tax display by destination', false, 'tax-excl'],
-  ['Scanning for consent platform + GPC handling', false, 'no CMP'],
-  ['Detecting currency rendering per region', false, 'USD only'],
-  ['Locating legal pages (privacy, terms, returns, imprint)', false, '3 of 4'],
-  ['Probing withdrawal / returns flow', false, 'missing'],
-  ['Running axe accessibility pass', false, '31 issues'],
-  ['Inspecting payment methods at checkout', true, '2 rails'],
-  ['Cross-referencing answers vs jurisdiction rules', true, 'done'],
-] as [string, boolean, string][];
+interface ScanStep { text: string }
+interface ScanModuleDef { id: string; label: string; accent: string; steps: ScanStep[] }
+
+const SCAN_MODULES: ScanModuleDef[] = [
+  {
+    id: 'M1', label: 'Legal Pages', accent: '#e8756a',
+    steps: [
+      { text: 'Checking Refund / Return policy'         },
+      { text: 'Checking Privacy policy'                  },
+      { text: 'Checking Terms of service'                },
+      { text: 'Detecting EU withdrawal rights clause'    },
+      { text: 'Checking for EU imprint / impressum'     },
+    ],
+  },
+  {
+    id: 'M2', label: 'Consent & Tracking', accent: '#e9b15a',
+    steps: [
+      { text: 'Scanning for consent management platform' },
+      { text: 'Detecting third-party trackers'           },
+      { text: 'Checking GDPR / CCPA opt-out signals'    },
+    ],
+  },
+  {
+    id: 'M3', label: 'Localisation', accent: '#5fd39d',
+    steps: [
+      { text: 'Checking hreflang tags'                   },
+      { text: 'Detecting currency selector'              },
+      { text: 'Probing Shopify localization form'        },
+      { text: 'Checking enabled currencies'              },
+    ],
+  },
+  {
+    id: 'M4', label: 'Accessibility (axe-core)', accent: '#7ab4f5',
+    steps: [
+      { text: 'Loading homepage in headless browser'     },
+      { text: 'Running axe-core on homepage'             },
+      { text: 'Loading product page in browser'          },
+      { text: 'Running axe-core on product page'         },
+    ],
+  },
+];
+
+// Flat sequence of items to animate: module header then its steps
+type ScanItem =
+  | { kind: 'module'; mod: ScanModuleDef; mi: number }
+  | { kind: 'step';   mod: ScanModuleDef; mi: number; si: number; step: ScanStep };
+
+const SCAN_ITEMS: ScanItem[] = SCAN_MODULES.flatMap((mod, mi) => [
+  { kind: 'module' as const, mod, mi },
+  ...mod.steps.map((step, si) => ({ kind: 'step' as const, mod, mi, si, step })),
+]);
 
 const DEMO = ['allbirds.com', 'gymshark.com', 'drmtlgy.com'];
 
@@ -329,8 +368,92 @@ function FindingCard({ finding, selectedMarkets }: { finding: Finding; selectedM
   );
 }
 
+function PassFindingRow({ finding, index, selectedMarkets }: { finding: Finding; index: number; selectedMarkets: string[] }) {
+  const [open, setOpen] = useState(false);
+  const markets = getAffectedMarkets(finding, selectedMarkets);
+  const context = getContext(finding);
+  const hasEvidence = !!(finding.evidence?.url || finding.evidence?.value || finding.evidence?.snippet);
+  const hasTools = !!(finding.tools && finding.tools.length > 0);
+  const hasDetails = hasEvidence || hasTools || finding.confidence !== 'high';
 
-// ── Main component ─────────────────────────────────────────────────────────────
+  return (
+    <div
+      style={{ borderTop: index > 0 ? '1px solid var(--line-2)' : undefined }}
+    >
+      <div
+        onClick={() => hasDetails && setOpen(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0',
+          cursor: hasDetails ? 'pointer' : 'default',
+        }}
+      >
+        <span style={{
+          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+          background: 'var(--good-bg)', border: '1px solid #b8dac8',
+          color: 'var(--good)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', fontWeight: 700, fontSize: 11,
+        }}>✓</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{finding.title}</span>
+          {context && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10.5, color: 'var(--mut-2)', marginLeft: 8 }}>— {context}</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {markets.map(m => (
+            <span key={m} style={{ fontFamily: "'IBM Plex Mono'", fontSize: 9, color: 'var(--mut-2)', background: '#f0f2f7', border: '1px solid var(--line-2)', borderRadius: 3, padding: '1px 5px', textTransform: 'uppercase' }}>{m}</span>
+          ))}
+          {hasDetails && <span style={{ color: 'var(--mut-2)', fontSize: 10, marginLeft: 4 }}>{open ? '▲' : '▼'}</span>}
+        </div>
+      </div>
+
+      {open && hasDetails && (
+        <div style={{
+          marginLeft: 32, marginBottom: 8, padding: '10px 14px',
+          background: '#f7faf8', border: '1px solid #d8e8df', borderRadius: 8,
+        }}>
+          <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 9.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.8px', color: 'var(--good)', marginBottom: 8 }}>
+            Proof of check
+          </div>
+
+          {finding.evidence?.url && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, color: 'var(--mut-2)', textTransform: 'uppercase', letterSpacing: '.5px' }}>URL checked </span>
+              <code style={{ fontSize: 11.5, background: '#eef3f0', border: '1px solid #d4e2da', borderRadius: 5, padding: '2px 8px', color: '#2a5e42', display: 'inline-block', marginTop: 2, wordBreak: 'break-all' }}>{finding.evidence.url}</code>
+            </div>
+          )}
+
+          {finding.evidence?.value && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, color: 'var(--mut-2)', textTransform: 'uppercase', letterSpacing: '.5px' }}>What was found </span>
+              <p style={{ fontSize: 12.5, color: 'var(--ink)', marginTop: 2, lineHeight: 1.5 }}>{finding.evidence.value}</p>
+            </div>
+          )}
+
+          {finding.evidence?.snippet && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, color: 'var(--mut-2)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Cited text from page </span>
+              <pre style={{ fontSize: 11, background: '#eef3f0', border: '1px solid #d4e2da', borderRadius: 6, padding: 8, color: '#3a6b52', whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: 3, maxHeight: 120, overflow: 'auto' }}>{finding.evidence.snippet}</pre>
+            </div>
+          )}
+
+          {hasTools && (
+            <div style={{ marginBottom: 4 }}>
+              <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, color: 'var(--mut-2)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Verified with </span>
+              <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                {finding.tools!.map(t => (
+                  <span key={t} style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, background: '#e5f1eb', color: 'var(--good)', border: '1px solid #b8dac8', borderRadius: 4, padding: '2px 7px' }}>{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {finding.confidence !== 'high' && (
+            <p style={{ fontSize: 11, color: 'var(--mut-2)', fontStyle: 'italic', marginTop: 4 }}>Confidence: {finding.confidence}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 const Home: NextPage = () => {
   const [step, setStep]       = useState<Step>('domain');
   const [domain, setDomain]   = useState('');
@@ -338,7 +461,7 @@ const Home: NextPage = () => {
   const [result, setResult]   = useState<AuditResult | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [scanProgress, setScanProgress] = useState(0);
-  const [visibleLines, setVisibleLines] = useState<number[]>([]);
+  const [visibleCount, setVisibleCount] = useState(0);
   const [filter, setFilter]   = useState('action');
   const [domainShake, setDomainShake] = useState(false);
 
@@ -381,7 +504,7 @@ const Home: NextPage = () => {
     go('analysis');
     setResult(null);
     setApiError(null);
-    setVisibleLines([]);
+    setVisibleCount(0);
     setScanProgress(0);
     apiDoneRef.current  = false;
     animDoneRef.current = false;
@@ -414,19 +537,19 @@ const Home: NextPage = () => {
         if (animDoneRef.current) finalize();
       });
 
-    // Animate scan lines
-    SCAN_LINES.forEach((_, i) => {
+    // Reveal SCAN_ITEMS one by one (module headers then their steps)
+    SCAN_ITEMS.forEach((_, i) => {
       setTimeout(() => {
-        setVisibleLines(prev => [...prev, i]);
-        setScanProgress(Math.round((i + 1) / SCAN_LINES.length * 100));
-      }, i * 380 + 100);
+        setVisibleCount(i + 1);
+        setScanProgress(Math.round((i + 1) / SCAN_ITEMS.length * 100));
+      }, i * 260 + 80);
     });
 
     // Animation done — wait for API if needed
     setTimeout(() => {
       animDoneRef.current = true;
       if (apiDoneRef.current) finalize();
-    }, SCAN_LINES.length * 380 + 600);
+    }, SCAN_ITEMS.length * 260 + 500);
   }
 
   function finalize() {
@@ -498,6 +621,7 @@ const Home: NextPage = () => {
           }
           @keyframes fade { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
           @keyframes shake { 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+          @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
           .fade-in { animation: fade .4s ease both; }
           .shake   { animation: shake .3s; }
           details summary { list-style: none; }
@@ -659,15 +783,58 @@ const Home: NextPage = () => {
               <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 13, color: '#9fb0cf', marginBottom: 6 }}>Auditing <b style={{ color: '#fff' }}>{domain}</b> · read-only</div>
               <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 22, color: '#fff', marginBottom: 22 }}>Running readiness scan</h3>
               <div>
-                {SCAN_LINES.map(([text, isDone, status], i) => {
-                  const vis = visibleLines.includes(i);
+                {SCAN_ITEMS.map((item, idx) => {
+                  const vis = visibleCount > idx;
+                  // The currently-revealing item is the last one that became visible
+                  const isActive = visibleCount - 1 === idx;
+
+                  if (item.kind === 'module') {
+                    const stepsTotal = item.mod.steps.length;
+                    const allStepsDone = visibleCount > idx + stepsTotal;
+                    return (
+                      <div key={`m${item.mi}`} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        background: '#162030', borderRadius: 8,
+                        padding: '7px 12px', margin: idx === 0 ? '0 0 2px' : '10px 0 2px',
+                        opacity: vis ? 1 : 0, transition: 'opacity .25s',
+                      }}>
+                        <span style={{
+                          fontFamily: "'IBM Plex Mono'", fontSize: 9.5, fontWeight: 700,
+                          letterSpacing: '1.2px', borderRadius: 4, padding: '2px 7px',
+                          background: item.mod.accent + '22', color: item.mod.accent,
+                          border: `1px solid ${item.mod.accent}44`,
+                        }}>{item.mod.id}</span>
+                        <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 600, fontSize: 13, color: '#e0e8f5' }}>{item.mod.label}</span>
+                        <span style={{ marginLeft: 'auto', fontFamily: "'IBM Plex Mono'", fontSize: 10,
+                          color: allStepsDone ? '#5fd39d' : '#e9b15a' }}>
+                          {allStepsDone ? '✓ done' : '● running'}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  // step item — past steps show ✓, active step pulses, no fake result status
+                  const { step, si, mod } = item;
+                  const isDone = vis && !isActive;
                   return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, fontFamily: "'IBM Plex Mono'", fontSize: 13, padding: '9px 0', borderBottom: '1px solid #1c2a44', opacity: vis ? 1 : 0, transform: vis ? 'none' : 'translateX(-6px)', transition: 'opacity .3s, transform .3s' }}>
-                      <span style={{ width: 18, height: 18, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, background: !vis ? '#1d2c47' : isDone ? 'rgba(31,138,91,.2)' : 'rgba(217,145,43,.22)', color: !vis ? '#7e90b0' : isDone ? '#5fd39d' : '#e9b15a' }}>
-                        {vis ? (isDone ? '✓' : '⚠') : '›'}
-                      </span>
-                      <span style={{ color: '#c3d0e6' }}>{text}</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 11, color: !vis ? '#6b7d9d' : isDone ? '#5fd39d' : '#e9b15a' }}>{status}</span>
+                    <div key={`s${item.mi}-${si}`} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      fontFamily: "'IBM Plex Mono'", fontSize: 12.5,
+                      padding: '8px 0 8px 14px',
+                      borderBottom: si < mod.steps.length - 1 ? '1px solid #1c2a44' : undefined,
+                      opacity: vis ? 1 : 0, transform: vis ? 'none' : 'translateX(-6px)',
+                      transition: 'opacity .25s, transform .25s',
+                    }}>
+                      <span style={{
+                        width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontWeight: 700,
+                        background: isDone ? 'rgba(31,138,91,.2)' : 'rgba(100,140,200,.18)',
+                        color: isDone ? '#5fd39d' : '#7ab4f5',
+                        // pulse the active step
+                        animation: isActive ? 'pulse 1s ease-in-out infinite' : undefined,
+                      }}>{isDone ? '✓' : '›'}</span>
+                      <span style={{ color: isDone ? '#a8bdd8' : '#e0e8f5' }}>{step.text}</span>
                     </div>
                   );
                 })}
@@ -734,11 +901,12 @@ const Home: NextPage = () => {
                 {/* ── What needs fixing ── */}
                 <div style={{ marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                    <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 16 }}>What needs fixing</span>
-                    <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: actionFindings.length > 0 ? 'var(--crit)' : 'var(--good)', background: actionFindings.length > 0 ? 'var(--crit-bg)' : 'var(--good-bg)', border: `1px solid ${actionFindings.length > 0 ? '#efc8be' : '#b8dac8'}`, borderRadius: 6, padding: '2px 8px' }}>{actionFindings.length} item{actionFindings.length !== 1 ? 's' : ''}</span>
+                    <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 16 }}>{filter === 'pass' ? 'Checks passing' : 'What needs fixing'}</span>
+                    {filter !== 'pass' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: actionFindings.length > 0 ? 'var(--crit)' : 'var(--good)', background: actionFindings.length > 0 ? 'var(--crit-bg)' : 'var(--good-bg)', border: `1px solid ${actionFindings.length > 0 ? '#efc8be' : '#b8dac8'}`, borderRadius: 6, padding: '2px 8px' }}>{actionFindings.length} item{actionFindings.length !== 1 ? 's' : ''}</span>}
+                    {filter === 'pass' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--good)', background: 'var(--good-bg)', border: '1px solid #b8dac8', borderRadius: 6, padding: '2px 8px' }}>{passFindings.length} check{passFindings.length !== 1 ? 's' : ''}</span>}
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                      {[['action','Needs action'], ['fix','Fix now only'], ['all','All findings']].map(([k, lab]) => (
-                        <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? 'var(--ink)' : 'var(--line)'}`, background: filter === k ? 'var(--ink)' : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 7, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>{lab}</button>
+                      {[['action','Needs action'], ['fix','Fix now only'], ['pass', `Passed (${passes})`], ['all','All findings']].map(([k, lab]) => (
+                        <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : 'var(--line)'}`, background: filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 7, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>{lab}</button>
                       ))}
                     </div>
                   </div>
@@ -761,15 +929,7 @@ const Home: NextPage = () => {
                     </summary>
                     <div style={{ padding: '2px 18px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {passFindings.map((f, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderTop: i > 0 ? '1px solid var(--line-2)' : undefined }}>
-                          <span style={{ color: 'var(--good)', fontSize: 13 }}>✓</span>
-                          <span style={{ fontSize: 13, fontWeight: 500 }}>{f.title}</span>
-                          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-                            {getAffectedMarkets(f, answers.markets).map(m => (
-                              <span key={m} style={{ fontFamily: "'IBM Plex Mono'", fontSize: 9, color: 'var(--mut-2)', background: '#f0f2f7', border: '1px solid var(--line-2)', borderRadius: 3, padding: '1px 5px', textTransform: 'uppercase' }}>{m}</span>
-                            ))}
-                          </div>
-                        </div>
+                        <PassFindingRow key={i} finding={f} index={i} selectedMarkets={answers.markets} />
                       ))}
                     </div>
                   </details>

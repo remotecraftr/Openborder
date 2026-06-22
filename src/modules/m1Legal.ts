@@ -118,7 +118,7 @@ export class LegalPagesModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'high',
-        evidence: { url },
+        evidence: { url, value: `Page found and verified (HTTP 200, content length adequate)` },
         suggestion: '',
       };
     } catch (err) {
@@ -161,6 +161,9 @@ export class LegalPagesModule extends BaseModule {
     reasoning: string;
   }): Finding {
     if (verdict.sufficient) {
+      const foundList = verdict.foundElements.length > 0
+        ? `Found: ${verdict.foundElements.join('; ')}`
+        : 'All 4 required elements present';
       return {
         module: this.moduleId,
         checkId: 'm1_eu_withdrawal',
@@ -168,7 +171,7 @@ export class LegalPagesModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'high',
-        evidence: { url, snippet: verdict.citedText || undefined },
+        evidence: { url, snippet: verdict.citedText || undefined, value: foundList },
         suggestion: '',
         tools: ['llm:gemini-flash'],
       };
@@ -200,7 +203,7 @@ export class LegalPagesModule extends BaseModule {
         status: 'pass',
         severity: 0,
         confidence: 'medium',
-        evidence: { url, snippet: snippetMatch?.[0]?.trim() },
+        evidence: { url, snippet: snippetMatch?.[0]?.trim(), value: 'Withdrawal language detected via keyword matching (14-day, withdrawal, cooling-off)' },
         suggestion: '',
       };
     }
