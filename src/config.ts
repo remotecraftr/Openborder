@@ -12,6 +12,7 @@ export const STATUS_MULTIPLIER: Record<string, number> = {
   warn: 0.5,
   pass: 0.0,
   not_detected: 0.35,
+  unverified: 0.35,
   error: 0.0,
 };
 

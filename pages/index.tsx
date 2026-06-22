@@ -905,6 +905,7 @@ const Home: NextPage = () => {
                     ))}
                   </div>
                 </div>
+                {unverified > 0 && <div style={{ fontSize: 13, color: 'var(--mut)', marginBottom: 20, marginTop: -8, paddingLeft: 8 }}>* Disclaimer: Unverified items subtract from your readiness score and must be reviewed manually.</div>}
 
                 {/* ── Market readiness ── */}
                 <div style={{ marginBottom: 22 }}>
