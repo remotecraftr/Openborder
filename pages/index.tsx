@@ -283,7 +283,7 @@ function ScoreRing({ score }: { score: number }) {
 
 function MarketCard({ market, findings }: { market: string; findings: Finding[] }) {
   const issues = findings
-    .filter(f => getAffectedMarkets(f, [market]).length > 0 && (f.status === 'fail' || f.status === 'warn'))
+    .filter(f => getAffectedMarkets(f, [market]).length > 0 && (f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected'))
     .sort((a, b) => b.severity - a.severity);
   const info = marketStatusInfo(issues);
   const topIssues = issues.slice(0, 3);
@@ -314,9 +314,10 @@ function FindingCard({ finding, selectedMarkets }: { finding: Finding; selectedM
   const ICON: Record<string, { char: string; bg: string; color: string; border: string }> = {
     fail:         { char: '✕', bg: 'var(--crit-bg)', color: 'var(--crit)', border: '#efc8be' },
     warn:         { char: '!', bg: 'var(--high-bg)', color: 'var(--high)', border: '#e8ceaa' },
-    not_detected: { char: '?', bg: '#f0f2f7',        color: 'var(--mut)',  border: 'var(--line)' },
+    not_detected: { char: '✕', bg: 'var(--crit-bg)', color: 'var(--crit)', border: '#efc8be' },
     pass:         { char: '✓', bg: 'var(--good-bg)', color: 'var(--good)', border: '#b8dac8' },
     error:        { char: '⚠', bg: '#fdf1ec',        color: 'var(--high)', border: 'var(--line)' },
+    unverified:   { char: '?', bg: '#f0f2f7',        color: 'var(--mut)',  border: 'var(--line)' },
   };
   const icon = ICON[finding.status] ?? ICON.error;
 
@@ -567,6 +568,7 @@ const Home: NextPage = () => {
   const warns      = findings.filter(f => f.status === 'warn').length;
   const passes     = findings.filter(f => f.status === 'pass').length;
   const notDet     = findings.filter(f => f.status === 'not_detected').length;
+  const unverified = findings.filter(f => f.status === 'unverified').length;
   const fixNows    = findings.filter(isFixNow);
   const score      = result?.readinessScore ?? 0;
 
@@ -576,16 +578,29 @@ const Home: NextPage = () => {
     ? { h: 'Conditional',         p: 'Launchable after the fix-now items are closed.' }
     : { h: 'Not launch-ready',    p: 'Hard blockers open in one or more target markets.' };
 
-  const actionFindings     = findings.filter(f => f.status === 'fail' || f.status === 'warn');
-  const undetectedFindings = findings.filter(f => f.status === 'not_detected');
+  const actionFindings     = findings.filter(f => f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected');
+  const unverifiedFindings = findings.filter(f => f.status === 'unverified');
   const passFindings       = findings.filter(f => f.status === 'pass');
 
   const filteredFindings = findings.filter(f => {
-    if (filter === 'action')     return f.status === 'fail' || f.status === 'warn';
-    if (filter === 'undetected') return f.status === 'not_detected';
+    if (filter === 'action')     return f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected';
+    if (filter === 'unverified') return f.status === 'unverified';
     if (filter === 'fix')        return isFixNow(f);
     if (filter === 'pass')       return f.status === 'pass';
     return f.status !== 'error';
+  }).sort((a, b) => {
+    const rank = (s: string) => {
+      if (s === 'fail') return 5;
+      if (s === 'warn') return 4;
+      if (s === 'not_detected') return 3;
+      if (s === 'unverified') return 2;
+      if (s === 'pass') return 1;
+      return 0;
+    };
+    if (rank(a.status) !== rank(b.status)) {
+      return rank(b.status) - rank(a.status);
+    }
+    return b.severity - a.severity;
   });
 
   const qualifiedOut = computeQualifiedOut(answers);
@@ -878,8 +893,9 @@ const Home: NextPage = () => {
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                     {[
                       { val: fixNows.length, label: 'Fix right away', color: 'var(--crit)' },
-                      { val: fails,          label: 'Issues',         color: 'var(--high)' },
-                      { val: warns + notDet, label: 'Needs attention', color: '#d4af70' },
+                      { val: fails + notDet, label: 'Issues',         color: 'var(--high)' },
+                      { val: warns,          label: 'Needs attention', color: '#d4af70' },
+                      { val: unverified,     label: 'Unverified',     color: '#7e8fae' },
                       { val: passes,         label: 'Passing',        color: 'var(--good)' },
                     ].map(({ val, label, color }) => (
                       <div key={label} style={{ textAlign: 'center' }}>
@@ -903,12 +919,12 @@ const Home: NextPage = () => {
                 {/* ── What needs fixing ── */}
                 <div style={{ marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                    <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 16 }}>{filter === 'pass' ? 'Checks passing' : filter === 'undetected' ? 'Undetected checks' : 'What needs fixing'}</span>
+                    <span style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 16 }}>{filter === 'pass' ? 'Checks passing' : filter === 'unverified' ? 'Unverified checks' : 'What needs fixing'}</span>
                     {filter === 'action' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: actionFindings.length > 0 ? 'var(--crit)' : 'var(--good)', background: actionFindings.length > 0 ? 'var(--crit-bg)' : 'var(--good-bg)', border: `1px solid ${actionFindings.length > 0 ? '#efc8be' : '#b8dac8'}`, borderRadius: 6, padding: '2px 8px' }}>{actionFindings.length} item{actionFindings.length !== 1 ? 's' : ''}</span>}
-                    {filter === 'undetected' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--mut)', background: '#eef0f4', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 8px' }}>{undetectedFindings.length} item{undetectedFindings.length !== 1 ? 's' : ''}</span>}
+                    {filter === 'unverified' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--mut)', background: '#eef0f4', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 8px' }}>{unverifiedFindings.length} item{unverifiedFindings.length !== 1 ? 's' : ''}</span>}
                     {filter === 'pass' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--good)', background: 'var(--good-bg)', border: '1px solid #b8dac8', borderRadius: 6, padding: '2px 8px' }}>{passFindings.length} check{passFindings.length !== 1 ? 's' : ''}</span>}
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                      {[['action','Needs action'], ['undetected', 'Undetected'], ['fix','Fix now only'], ['pass', `Passed (${passes})`], ['all','All findings']].map(([k, lab]) => (
+                      {[['all','All findings'], ['action',`Needs action (${actionFindings.length})`], ['unverified', `Unverified (${unverified})`], ['pass', `Passed (${passes})`], ['fix','Fix now only']].map(([k, lab]) => (
                         <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : 'var(--line)'}`, background: filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 7, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>{lab}</button>
                       ))}
                     </div>
@@ -923,7 +939,7 @@ const Home: NextPage = () => {
                 </div>
 
                 {/* ── Passing checks (collapsed) ── */}
-                {passFindings.length > 0 && (
+                {passFindings.length > 0 && !['pass', 'all'].includes(filter) && (
                   <details style={{ marginTop: 18, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--card)', overflow: 'hidden' }}>
                     <summary style={{ cursor: 'pointer', padding: '13px 18px', fontSize: 13.5, fontWeight: 600, color: 'var(--good)', display: 'flex', alignItems: 'center', gap: 8 }}>
                       <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3 3 6-6" stroke="#1F8A5B" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
