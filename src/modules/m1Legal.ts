@@ -63,12 +63,12 @@ export class LegalPagesModule extends BaseModule {
         refundFinding.evidence.url ?? `${this.crawler.baseUrl}/policies/refund-policy`
       );
       if (withdrawalFinding) findings.push(withdrawalFinding);
-    } else if (refundFinding?.status === 'not_detected') {
+    } else if (refundFinding?.status === 'unverified') {
       findings.push({
         module: this.moduleId,
         checkId: 'm1_eu_withdrawal',
         title: 'Right of Withdrawal Clause (EU/UK)',
-        status: 'not_detected',
+        status: 'unverified',
         severity: 85,
         confidence: 'low',
         evidence: { url: refundFinding.evidence.url, value: 'Parent policy blocked by robots.txt' },
@@ -82,12 +82,12 @@ export class LegalPagesModule extends BaseModule {
         privacyFinding.evidence.url ?? `${this.crawler.baseUrl}/policies/privacy-policy`
       );
       if (optOutFinding) findings.push(optOutFinding);
-    } else if (privacyFinding?.status === 'not_detected') {
+    } else if (privacyFinding?.status === 'unverified') {
       findings.push({
         module: this.moduleId,
         checkId: 'm1_us_opt_out',
-        title: 'CCPA/CPRA "Do Not Sell or Share" Link',
-        status: 'not_detected',
+        title: 'US-State Privacy Opt-Out Language',
+        status: 'unverified',
         severity: 75,
         confidence: 'low',
         evidence: { url: privacyFinding.evidence.url, value: 'Parent policy blocked by robots.txt' },
@@ -149,7 +149,7 @@ export class LegalPagesModule extends BaseModule {
         module: this.moduleId,
         checkId: spec.checkId,
         title: spec.title,
-        status: isRobots ? 'not_detected' : 'error',
+        status: isRobots ? 'unverified' : 'error',
         severity: isRobots ? spec.severity : 0,
         confidence: 'low',
         evidence: { url, value: String(err) },

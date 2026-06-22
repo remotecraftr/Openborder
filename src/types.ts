@@ -1,4 +1,4 @@
-export type Status = 'pass' | 'warn' | 'fail' | 'not_detected' | 'error';
+export type Status = 'pass' | 'warn' | 'fail' | 'not_detected' | 'error' | 'unverified';
 export type Confidence = 'high' | 'medium' | 'low';
 
 export interface Evidence {
