@@ -883,29 +883,36 @@ const Home: NextPage = () => {
                 </div>
 
                 {/* ── Score + stats ── */}
-                <div style={{ background: 'var(--ink)', color: '#fff', borderRadius: 14, padding: '20px 24px', display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16, boxShadow: '0 1px 2px rgba(14,22,38,.05),0 8px 24px rgba(14,22,38,.06)' }}>
-                  <ScoreRing score={score} />
-                  <div>
-                    <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--seal)' }}>Overall verdict</div>
-                    <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 20, margin: '5px 0 3px' }}>{verdict.h}</h3>
-                    <p style={{ fontSize: 13, color: '#aab9d4', maxWidth: '32ch' }}>{verdict.p}</p>
+                <div style={{ background: 'var(--ink)', color: '#fff', borderRadius: 14, display: 'flex', flexDirection: 'column', marginBottom: 22, boxShadow: '0 1px 2px rgba(14,22,38,.05),0 8px 24px rgba(14,22,38,.06)' }}>
+                  <div style={{ padding: '20px 24px', display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <ScoreRing score={score} />
+                    <div>
+                      <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 10, letterSpacing: '1.6px', textTransform: 'uppercase', color: 'var(--seal)' }}>Overall verdict</div>
+                      <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 20, margin: '5px 0 3px' }}>{verdict.h}</h3>
+                      <p style={{ fontSize: 13, color: '#aab9d4', maxWidth: '32ch' }}>{verdict.p}</p>
+                    </div>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                      {[
+                        { val: fixNows.length, label: 'Fix right away', color: 'var(--crit)' },
+                        { val: fails + notDet, label: 'Issues',         color: 'var(--high)' },
+                        { val: warns,          label: 'Needs attention', color: '#d4af70' },
+                        { val: unverified,     label: 'Unverified',     color: '#7e8fae' },
+                        { val: passes,         label: 'Passing',        color: 'var(--good)' },
+                      ].map(({ val, label, color }) => (
+                        <div key={label} style={{ textAlign: 'center' }}>
+                          <b style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 26, display: 'block', lineHeight: 1, color }}>{val}</b>
+                          <div style={{ fontSize: 11, color: '#7e8fae', marginTop: 3, whiteSpace: 'nowrap' }}>{label}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                    {[
-                      { val: fixNows.length, label: 'Fix right away', color: 'var(--crit)' },
-                      { val: fails + notDet, label: 'Issues',         color: 'var(--high)' },
-                      { val: warns,          label: 'Needs attention', color: '#d4af70' },
-                      { val: unverified,     label: 'Unverified',     color: '#7e8fae' },
-                      { val: passes,         label: 'Passing',        color: 'var(--good)' },
-                    ].map(({ val, label, color }) => (
-                      <div key={label} style={{ textAlign: 'center' }}>
-                        <b style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 26, display: 'block', lineHeight: 1, color }}>{val}</b>
-                        <div style={{ fontSize: 11, color: '#7e8fae', marginTop: 3, whiteSpace: 'nowrap' }}>{label}</div>
-                      </div>
-                    ))}
-                  </div>
+                  {unverified > 0 && (
+                    <div style={{ background: '#1c2a3e', padding: '10px 24px', fontSize: 12.5, color: '#9aa9c6', borderTop: '1px solid #283a5b', display: 'flex', alignItems: 'center', gap: 8, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 14A6 6 0 108 2a6 6 0 000 12zM8 5v3.5M8 11h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                      Unverified items incur a penalty to your readiness score and require manual review.
+                    </div>
+                  )}
                 </div>
-                {unverified > 0 && <div style={{ fontSize: 13, color: 'var(--mut)', marginBottom: 20, marginTop: -8, paddingLeft: 8 }}>* Disclaimer: Unverified items subtract from your readiness score and must be reviewed manually.</div>}
 
                 {/* ── Market readiness ── */}
                 <div style={{ marginBottom: 22 }}>
