@@ -190,6 +190,7 @@ export class ConsentTrackingModule extends BaseModule {
       /opt.?out\s+of\s+(?:sale|selling)/i,
       /your\s+privacy\s+choices/i,
       /california\s+privacy\s+rights/i,
+      /ccpa/i,
     ];
 
     const found = ccpaPatterns.some(p => p.test(html));
