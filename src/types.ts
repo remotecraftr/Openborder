@@ -34,6 +34,10 @@ export interface AuditResult {
   readinessScore: number; // 0–100 weighted rollup
   findings: Finding[];
   errors: ErrorRecord[];
+  adMetrics?: {
+    facebook: { count: number; totalSpend: number; regions: string[] };
+    google: { count: number; totalSpend: number; regions: string[] };
+  };
 }
 
 export interface FetchResult {

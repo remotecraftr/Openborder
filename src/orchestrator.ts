@@ -6,6 +6,8 @@ import { LocalizationModule } from './modules/m3Locale';
 import { AccessibilityModule } from './modules/m4Axe';
 import { TaxDisplayModule } from './modules/m5Tax';
 import { MANAGED_BROWSER } from './browser';
+import { getAdVolumeByCountry } from './api/adyntel';
+import { COUNTRY_TO_CURRENCY } from './currencyMap';
 import type { AuditResult, Finding, ErrorRecord } from './types';
 
 export interface AnalyzeOptions {
@@ -64,6 +66,8 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
   }
 
   const tailResults = await Promise.allSettled(tailModules.map(m => m.run()));
+  const adSpendPromise = getAdVolumeByCountry(domain);
+
   const results = [...staticResults, ...playwrightResults, ...tailResults];
 
   for (let i = 0; i < results.length; i++) {
@@ -81,6 +85,76 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
     }
   }
 
+  const multiCurrencyPass = allFindings.some(f => f.checkId === 'm3_enabled_currencies' && f.status === 'pass');
+  const currencyEvidence = allFindings.find(f => f.checkId === 'm3_enabled_currencies')?.evidence?.value || '';
+
+  let adSpendData: { 
+    facebook: { spendByCountry: Record<string, number>; count: number; totalSpend: number; }, 
+    google: { spendByCountry: Record<string, number>; count: number; totalSpend: number; } 
+  } = { 
+    facebook: { spendByCountry: {}, count: 0, totalSpend: 0 }, 
+    google: { spendByCountry: {}, count: 0, totalSpend: 0 } 
+  };
+  try {
+    adSpendData = await adSpendPromise;
+  } catch (err) {
+    errors.push({
+      module: 'ad_intelligence',
+      checkId: 'adyntel_api_failed',
+      message: 'Failed to fetch ad intelligence data',
+      detail: String(err),
+    });
+  }
+
+  const processSpend = (platform: 'facebook' | 'google', adSpend: Record<string, number>) => {
+    const platformDisplay = platform === 'facebook' ? 'Meta' : 'Google';
+    for (const [country, spend] of Object.entries(adSpend)) {
+      if (platform === 'facebook' && spend < 5000) continue; // Only flag if spend is somewhat significant
+
+      let isSupported = multiCurrencyPass;
+      let expectedCurrency = COUNTRY_TO_CURRENCY[country];
+
+      if (expectedCurrency && !isSupported) {
+        isSupported = currencyEvidence.includes(expectedCurrency);
+      }
+
+      if (!isSupported && expectedCurrency) {
+        allFindings.push({
+          module: 'M3_Currencies',
+          checkId: `m3_mismatch_spend_${platform}_${country}`,
+          title: `Localization Mismatch - ${platformDisplay} (${country})`,
+          status: 'fail',
+          severity: 85,
+          confidence: 'high',
+          evidence: {
+            value: platform === 'google'
+              ? `Active ${platformDisplay} ads detected in ${country}, but missing supported currency (${expectedCurrency}).`
+              : `Active ${platformDisplay} ads detected in ${country} ($${spend.toLocaleString()}), but missing supported currency (${expectedCurrency}).`
+          },
+          suggestion: `Add ${expectedCurrency} to your localized storefronts to capture conversion from these ads.`
+        });
+      } else if (spend > 0) {
+        allFindings.push({
+          module: 'M3_Currencies',
+          checkId: `m3_aligned_spend_${platform}_${country}`,
+          title: `Ad Spend Aligned - ${platformDisplay} (${country})`,
+          status: 'pass',
+          severity: 0,
+          confidence: 'high',
+          evidence: {
+            value: platform === 'google' 
+              ? `${platformDisplay} ad spend in ${country} is safely supported by localizations.`
+              : `${platformDisplay} ad spend in ${country} ($${spend.toLocaleString()}) is safely supported by localizations.`
+          },
+          suggestion: ''
+        });
+      }
+    }
+  };
+
+  processSpend('facebook', adSpendData.facebook.spendByCountry);
+  processSpend('google', adSpendData.google.spendByCountry);
+
   const readinessScore = computeScore(allFindings);
 
   return {
@@ -90,5 +164,17 @@ export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promis
     readinessScore,
     findings: allFindings,
     errors,
+    adMetrics: {
+      facebook: { 
+        count: adSpendData.facebook.count, 
+        totalSpend: adSpendData.facebook.totalSpend,
+        regions: Object.keys(adSpendData.facebook.spendByCountry)
+      },
+      google: { 
+        count: adSpendData.google.count, 
+        totalSpend: adSpendData.google.totalSpend,
+        regions: Object.keys(adSpendData.google.spendByCountry)
+      },
+    }
   };
 }

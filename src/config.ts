@@ -4,6 +4,7 @@ export const MODULE_WEIGHT: Record<string, number> = {
   consent_tracking: 0.9,
   localization: 0.5,
   accessibility: 0.6,
+  ad_intelligence: 2.0,
 };
 
 // How much of the severity a given status contributes to the penalty
@@ -23,3 +24,6 @@ export const CRAWL = {
   RETRY_ONCE: true,
   USER_AGENT: 'OpenBorderCrawler/1.0 (+https://openborder.io/crawler)',
 } as const;
+
+export const ADYNTEL_API_KEY = process.env.ADYNTEL_API_KEY ?? '';
+export const ADYNTEL_EMAIL = process.env.ADYNTEL_EMAIL ?? '';

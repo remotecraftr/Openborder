@@ -116,6 +116,13 @@ const SCAN_MODULES: ScanModuleDef[] = [
       { text: 'Running axe-core on product page'         },
     ],
   },
+  {
+    id: 'M5', label: 'Ad Intelligence', accent: '#a78bfa',
+    steps: [
+      { text: 'Fetching live ad spend across all global markets' },
+      { text: 'Cross-referencing global spend with localization' },
+    ],
+  },
 ];
 
 // Flat sequence of items to animate: module header then its steps
@@ -137,6 +144,7 @@ const MODULE_MARKETS: Record<string, string[]> = {
   localization:     ['EU', 'UK', 'CA', 'AU'],
   accessibility:    ['EU'],
   tax_display:      ['EU', 'UK'],
+  ad_intelligence:  ['EU', 'UK', 'US', 'CA', 'AU'],
 };
 
 // Module weights — mirrors the backend scoring engine
@@ -146,6 +154,7 @@ const MODULE_WEIGHTS: Record<string, number> = {
   accessibility:    0.6,
   localization:     0.5,
   tax_display:      0.4,
+  ad_intelligence:  2.0,
 };
 
 // Per-check market scope (more precise than module-level)
@@ -455,6 +464,162 @@ function PassFindingRow({ finding, index, selectedMarkets }: { finding: Finding;
     </div>
   );
 }
+function AdIntelligenceDashboard({ findings, result }: { findings: Finding[], result: AuditResult }) {
+  // If the API failed, we'll see an error in the result.errors array matching the module
+  const apiError = result.errors.find(e => e.module === 'ad_intelligence');
+  
+  if (apiError) {
+    return (
+      <div style={{ background: 'var(--card)', border: '1px solid #efc8be', borderRadius: 14, padding: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--crit-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--crit)' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <div>
+            <h3 style={{ fontFamily: "'Space Grotesk'", fontSize: 20, fontWeight: 700, color: 'var(--ink)', margin: 0 }}>Adyntel API Error</h3>
+            <div style={{ fontSize: 13, color: 'var(--mut)', marginTop: 2 }}>{apiError.message}</div>
+          </div>
+        </div>
+        <div style={{ background: '#f8f9fc', border: '1px solid var(--line-2)', borderRadius: 8, padding: 16, fontFamily: "'IBM Plex Mono'", fontSize: 12, color: 'var(--ink)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          {apiError.detail}
+        </div>
+      </div>
+    );
+  }
+
+  const mismatchFindings = findings.filter(f => f.checkId.includes('mismatch'));
+  const alignedFindings = findings.filter(f => f.checkId.includes('aligned') || f.checkId.includes('matched'));
+  
+  const totalFindings = findings.length;
+
+  const fbMetrics = result.adMetrics?.facebook || { count: 0, totalSpend: 0, regions: [] };
+  const googleMetrics = result.adMetrics?.google || { count: 0, totalSpend: 0, regions: [] };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Brand Specific Ad Metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+        
+        {/* Meta Card */}
+        <div style={{ background: 'var(--card)', border: '1px solid #dce4f2', borderRadius: 14, padding: '24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, background: '#1877F2', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+              </div>
+              <h4 style={{ fontFamily: "'Space Grotesk'", fontSize: 18, fontWeight: 700, margin: 0, color: 'var(--ink)' }}>Meta Ads</h4>
+            </div>
+            <span style={{ fontSize: 12, background: fbMetrics.count > 0 ? '#e8f3ff' : '#f3f4f6', color: fbMetrics.count > 0 ? '#1877F2' : 'var(--mut)', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>{fbMetrics.count > 0 ? 'ACTIVE' : 'NO ADS'}</span>
+          </div>
+          
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Spend (Revenue)</div>
+              <div style={{ fontFamily: "'Space Grotesk'", fontSize: 28, fontWeight: 700, color: 'var(--ink)' }}>${fbMetrics.totalSpend.toLocaleString()}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ad Count</div>
+              <div style={{ fontFamily: "'Space Grotesk'", fontSize: 28, fontWeight: 700, color: 'var(--ink)' }}>{fbMetrics.count.toLocaleString()}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--mut-2)' }}>
+            <strong>Regions:</strong> {fbMetrics.regions.length > 0 ? fbMetrics.regions.join(', ') : 'None detected'}
+          </div>
+        </div>
+
+        {/* Google Card */}
+        <div style={{ background: 'var(--card)', border: '1px solid #dce4f2', borderRadius: 14, padding: '24px', display: 'flex', flexDirection: 'column', gap: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, background: '#fff', border: '1px solid #eaeaea', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+              </div>
+              <h4 style={{ fontFamily: "'Space Grotesk'", fontSize: 18, fontWeight: 700, margin: 0, color: 'var(--ink)' }}>Google Ads</h4>
+            </div>
+            <span style={{ fontSize: 12, background: googleMetrics.count > 0 ? '#e8f3ff' : '#f3f4f6', color: googleMetrics.count > 0 ? '#1877F2' : 'var(--mut)', padding: '4px 10px', borderRadius: 20, fontWeight: 600 }}>{googleMetrics.count > 0 ? 'ACTIVE' : 'NO ADS'}</span>
+          </div>
+          
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Ad Count</div>
+              <div style={{ fontFamily: "'Space Grotesk'", fontSize: 28, fontWeight: 700, color: 'var(--ink)' }}>{googleMetrics.count.toLocaleString()}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--mut-2)' }}>
+            <strong>Regions:</strong> {googleMetrics.regions.length > 0 ? googleMetrics.regions.join(', ') : 'None detected'}
+          </div>
+        </div>
+      </div>
+
+      {totalFindings === 0 ? (
+        <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, padding: '40px', textAlign: 'center', marginTop: 10 }}>
+          <div style={{ display: 'inline-flex', width: 64, height: 64, borderRadius: 16, background: '#f3f4f6', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <span style={{ fontSize: 24 }}>💸</span>
+          </div>
+          <h3 style={{ fontFamily: "'Space Grotesk'", fontSize: 22, fontWeight: 700, margin: '0 0 8px' }}>No Ad Spend Detected</h3>
+          <p style={{ color: 'var(--mut)', maxWidth: '40ch', margin: '0 auto' }}>We successfully checked the Meta and Google API endpoints, but didn't detect any actionable ad spend limits for this domain.</p>
+        </div>
+      ) : (
+        <>
+          {/* Top Metrics Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+            <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, padding: '24px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--mut)', marginBottom: 8 }}>Mismatched Spend</div>
+              <div style={{ fontFamily: "'Space Grotesk'", fontSize: 36, fontWeight: 700, color: 'var(--crit)', lineHeight: 1 }}>{mismatchFindings.length}</div>
+              <div style={{ fontSize: 13, color: 'var(--mut-2)', marginTop: 8 }}>High-risk markets where ad spend is active but storefront is not localized.</div>
+              <div style={{ position: 'absolute', right: -20, bottom: -20, fontSize: 80, opacity: 0.05, pointerEvents: 'none' }}>⚠️</div>
+            </div>
+            
+            <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, padding: '24px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--mut)', marginBottom: 8 }}>Aligned Spend</div>
+              <div style={{ fontFamily: "'Space Grotesk'", fontSize: 36, fontWeight: 700, color: 'var(--good)', lineHeight: 1 }}>{alignedFindings.length}</div>
+              <div style={{ fontSize: 13, color: 'var(--mut-2)', marginTop: 8 }}>Markets where ad spend is safely supported by localization configuration.</div>
+              <div style={{ position: 'absolute', right: -20, bottom: -20, fontSize: 80, opacity: 0.05, pointerEvents: 'none' }}>✅</div>
+            </div>
+          </div>
+
+          {/* Detail Breakdown */}
+          <div style={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--line-2)', background: '#fafbfc' }}>
+              <h4 style={{ fontFamily: "'Space Grotesk'", fontSize: 18, fontWeight: 700, margin: 0 }}>Market Analytics & Proof</h4>
+            </div>
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {findings.map((f, i) => {
+                const isMismatch = f.checkId.includes('mismatch');
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '16px', background: isMismatch ? 'var(--crit-bg)' : 'var(--good-bg)', border: `1px solid ${isMismatch ? '#f0c0b6' : '#b8dac8'}`, borderRadius: 12 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 12, background: isMismatch ? '#fff' : '#fff', border: `1px solid ${isMismatch ? '#efc8be' : '#b8dac8'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+                      {isMismatch ? '💸' : '🎯'}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <h5 style={{ fontFamily: "'Space Grotesk'", fontSize: 16, fontWeight: 700, color: isMismatch ? 'var(--crit)' : 'var(--good)', margin: '0 0 4px' }}>{f.title}</h5>
+                      <p style={{ fontSize: 14, color: 'var(--ink)', margin: '0 0 10px', lineHeight: 1.5 }}>{f.evidence?.value}</p>
+                      
+                      {isMismatch && f.suggestion && (
+                        <div style={{ fontSize: 13, color: '#b24432', background: '#fff', padding: '10px 14px', borderRadius: 8, border: '1px solid #efc8be', display: 'inline-block' }}>
+                          <strong style={{ display: 'block', marginBottom: 4 }}>Fix Recommendation:</strong>
+                          {f.suggestion}
+                        </div>
+                      )}
+                      
+                      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                        <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, background: '#fff', border: '1px solid var(--line)', padding: '4px 8px', borderRadius: 6, color: 'var(--mut)' }}>
+                          Data Source: {f.checkId.includes('facebook') ? 'Meta' : f.checkId.includes('google') ? 'Google' : 'Adyntel API'}
+                        </span>
+                        <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, background: '#fff', border: '1px solid var(--line)', padding: '4px 8px', borderRadius: 6, color: 'var(--mut)' }}>Status: {isMismatch ? 'ACTION REQUIRED' : 'OPTIMIZED'}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const Home: NextPage = () => {
   const [step, setStep]       = useState<Step>('domain');
   const [domain, setDomain]   = useState('');
@@ -583,6 +748,7 @@ const Home: NextPage = () => {
   const passFindings       = findings.filter(f => f.status === 'pass');
 
   const filteredFindings = findings.filter(f => {
+    if (filter === 'ad')         return f.module === 'ad_intelligence' || f.checkId.includes('_spend_');
     if (filter === 'action')     return f.status === 'fail' || f.status === 'warn' || f.status === 'not_detected';
     if (filter === 'unverified') return f.status === 'unverified';
     if (filter === 'fix')        return isFixNow(f);
@@ -932,18 +1098,22 @@ const Home: NextPage = () => {
                     {filter === 'unverified' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--mut)', background: '#eef0f4', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 8px' }}>{unverifiedFindings.length} item{unverifiedFindings.length !== 1 ? 's' : ''}</span>}
                     {filter === 'pass' && <span style={{ fontFamily: "'IBM Plex Mono'", fontSize: 11, color: 'var(--good)', background: 'var(--good-bg)', border: '1px solid #b8dac8', borderRadius: 6, padding: '2px 8px' }}>{passFindings.length} check{passFindings.length !== 1 ? 's' : ''}</span>}
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                      {[['all','All findings'], ['action',`Needs action (${actionFindings.length})`], ['unverified', `Unverified (${unverified})`], ['pass', `Passed (${passes})`], ['fix','Fix now only']].map(([k, lab]) => (
-                        <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : 'var(--line)'}`, background: filter === k ? (k === 'pass' ? 'var(--good)' : 'var(--ink)') : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 7, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>{lab}</button>
+                      {[['all','All findings'], ['action',`Needs action (${actionFindings.length})`], ['unverified', `Unverified (${unverified})`], ['pass', `Passed (${passes})`], ['fix','Fix now only'], ['ad', 'Ad Intelligence']].map(([k, lab]) => (
+                        <button key={k} onClick={() => setFilter(k)} style={{ border: `1px solid ${filter === k ? (k === 'pass' ? 'var(--good)' : k === 'ad' ? '#8b5cf6' : 'var(--ink)') : 'var(--line)'}`, background: filter === k ? (k === 'pass' ? 'var(--good)' : k === 'ad' ? '#8b5cf6' : 'var(--ink)') : '#fff', color: filter === k ? '#fff' : 'var(--mut)', borderRadius: 7, padding: '5px 11px', fontSize: 12, cursor: 'pointer', fontWeight: 500, fontFamily: 'Inter' }}>{lab}</button>
                       ))}
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {filteredFindings.length === 0
-                      ? <div style={{ background: 'var(--good-bg)', border: '1px solid #b8dac8', borderRadius: 12, padding: '20px 22px', color: 'var(--good)', fontSize: 14, fontWeight: 500 }}>✓ No issues found in this view.</div>
-                      : filteredFindings.map((f, i) => <FindingCard key={`${f.checkId}-${i}`} finding={f} selectedMarkets={answers.markets} />)
-                    }
-                  </div>
+                  {filter === 'ad' ? (
+                    <AdIntelligenceDashboard findings={filteredFindings} result={result} />
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {filteredFindings.length === 0
+                        ? <div style={{ background: 'var(--good-bg)', border: '1px solid #b8dac8', borderRadius: 12, padding: '20px 22px', color: 'var(--good)', fontSize: 14, fontWeight: 500 }}>✓ No issues found in this view.</div>
+                        : filteredFindings.map((f, i) => <FindingCard key={`${f.checkId}-${i}`} finding={f} selectedMarkets={answers.markets} />)
+                      }
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Passing checks (collapsed) ── */}

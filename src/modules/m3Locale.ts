@@ -128,7 +128,10 @@ export class LocalizationModule extends BaseModule {
     const hasLocaleSelect =
       $('select[name*="locale"], select[name*="country"], select[id*="locale"]').length > 0;
 
-    if (form || hasLocaleSelect) {
+    const hasDynamicSelector = 
+      $('.language-selector, .country-selector, [data-target-section-id*="currency-switcher"], [data-target-section-id*="country-switcher"]').length > 0;
+
+    if (form || hasLocaleSelect || hasDynamicSelector) {
       const signal = form ? 'Localization form found in page source' : 'Locale/country select element found in page source';
       return {
         module: this.moduleId,
@@ -166,6 +169,9 @@ export class LocalizationModule extends BaseModule {
       // CSS class/id containing "currency"
       { label: 'currency-related element (class/id)', match: $('[class*="currency"], [id*="currency"]').length > 0 },
 
+      // Data attributes containing "currency"
+      { label: 'currency-related data attribute', match: $('[data-target*="currency"], [data-target-section-id*="currency"], [data-target-script-url*="currency"]').length > 0 },
+
       // Form input with name="currency_code" (Shopify localization form standard)
       { label: 'currency_code form input', match: $('input[name="currency_code"], select[name="currency_code"]').length > 0 },
 
@@ -187,7 +193,7 @@ export class LocalizationModule extends BaseModule {
       { label: 'select with currency options', match:
         $('select').toArray().some(el => {
           const inner = $(el).html() ?? '';
-          return /\b(USD|EUR|GBP|CAD|AUD|JPY|CHF|SEK|NOK|DKK|NZD|SGD|HKD|KRW|MXN|BRL|INR|ZAR|PLN|CZK|HUF|RON|BGN|HRK|ISK)\b/.test(inner);
+          return /\b(AED|AFN|ALL|AMD|ANG|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BGN|BHD|BIF|BMD|BND|BOB|BOV|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHE|CHF|CHW|CLF|CLP|CNY|COP|COU|CRC|CUC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HRK|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MXV|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLL|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|USN|UYI|UYU|UYW|UZS|VEF|VES|VND|VUV|WST|XAF|XAG|XAU|XBA|XBB|XBC|XBD|XCD|XDR|XOF|XPD|XPF|XPT|XSU|XTS|XUA|XXX|YER|ZAR|ZMW|ZWL)\b/.test(inner);
         })
       },
 
@@ -271,8 +277,11 @@ export class LocalizationModule extends BaseModule {
     // Method 3: Scan DOM for currency codes inside selectors, forms, and disclosure elements
     // This catches JS-rendered currency selectors that have multiple currency options
     if (currencies.length <= 1) {
-      const CURRENCY_CODES = /\b(USD|EUR|GBP|CAD|AUD|JPY|CHF|SEK|NOK|DKK|NZD|SGD|HKD|KRW|MXN|BRL|INR|ZAR|PLN|CZK|HUF|RON|BGN|HRK|ISK)\b/g;
+      const CURRENCY_CODES = /\b(AED|AFN|ALL|AMD|ANG|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BGN|BHD|BIF|BMD|BND|BOB|BOV|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHE|CHF|CHW|CLF|CLP|CNY|COP|COU|CRC|CUC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HRK|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MXV|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLL|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|USN|UYI|UYU|UYW|UZS|VEF|VES|VND|VUV|WST|XAF|XAG|XAU|XBA|XBB|XBC|XBD|XCD|XDR|XOF|XPD|XPF|XPT|XSU|XTS|XUA|XXX|YER|ZAR|ZMW|ZWL)\b/g;
       const domCurrencies = new Set<string>();
+      if (activeMatch) {
+        domCurrencies.add(activeMatch[1]);
+      }
 
       // Check select options, disclosure lists, localization forms, and currency-related elements
       const selectors = [
@@ -283,6 +292,7 @@ export class LocalizationModule extends BaseModule {
         '[class*="currency"] option, [class*="currency"] li, [class*="currency"] a',
         '[data-currency-selector] option, [data-currency-selector] li',
         '[name="currency_code"] option',
+        '.country-iso-code',
       ];
 
       for (const sel of selectors) {
@@ -298,6 +308,22 @@ export class LocalizationModule extends BaseModule {
 
       if (domCurrencies.size > 1) {
         currencies = [...domCurrencies];
+      }
+    }
+
+    // Method 4: If we detected a dynamic currency modal script, assume it supports multi-currency
+    if (currencies.length <= 1) {
+      if ($('[data-target-script-url*="currency"], [data-target-section-id*="currency-switcher"]').length > 0) {
+        return {
+          module: this.moduleId,
+          checkId: 'm3_enabled_currencies',
+          title: 'Multi-Currency Support',
+          status: 'pass',
+          severity: 0,
+          confidence: 'medium',
+          evidence: { url: this.crawler.baseUrl, value: `Dynamic currency switcher detected (JS modal)` },
+          suggestion: '',
+        };
       }
     }
 
