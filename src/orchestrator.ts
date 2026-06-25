@@ -19,7 +19,14 @@ export interface AnalyzeOptions {
   usePlaywright?: boolean;
 }
 
-export async function analyze(domain: string, opts: AnalyzeOptions = {}): Promise<AuditResult> {
+export interface ProgressEvent {
+  type: string;
+  message?: string;
+  result?: any;
+  [key: string]: any;
+}
+
+export async function analyze(domain: string, opts: AnalyzeOptions = {}, onProgress?: (event: ProgressEvent) => void): Promise<AuditResult> {
   const { includeTaxDisplay = false, includeAccessibility = true, usePlaywright = true } = opts;
 
   const crawler = new Crawler(domain);
