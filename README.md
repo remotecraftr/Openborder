@@ -32,6 +32,7 @@ Type a Shopify domain → get a **0–100 readiness score** plus a prioritized l
 | M3 Localization | hreflang tags, country/currency selector, multi-currency support | 25–45 |
 | M4 Accessibility | axe-core WCAG violations on homepage + product page (requires Playwright) | 20–85 |
 | M5 Tax Display | VAT number in footer, tax-inclusive pricing signal, OSS/VATMOSS | 20–35 |
+| Ad Intelligence | Meta & Google ad spend vs localization match checking | 85–100 |
 
 ---
 
@@ -68,7 +69,7 @@ Note: confidence is `medium` — static HTML detection cannot prove scripts fire
 - Launches headless Chromium via Playwright, injects axe-core 4.9.0, runs on homepage + first product page (from `/products.json`).
 - Scans a **second product page** if available (stretch goal from PRD §12).
 - Maps axe impact levels to severity: critical=85, serious=65, moderate=40, minor=20.
-- Skipped automatically on Vercel/Lambda (Playwright unavailable in serverless). Run locally to get results.
+- Seamlessly runs on serverless via `@sparticuz/chromium` or a `BROWSER_WS_ENDPOINT`.
 - Requires: `npm install playwright && npx playwright install chromium`
 
 ### M5 — Tax Display Signal (Stretch)
@@ -141,6 +142,9 @@ npm run typecheck # TypeScript strict check
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `GEMINI_API_KEY` | No | Enables LLM withdrawal clause analysis in M1. Without it, regex fallback is used (confidence: medium). |
+| `BROWSER_WS_ENDPOINT` | No | Enables routing Playwright to a managed remote browser service for M4 checks (e.g. Browserless). |
+| `ADYNTEL_API_KEY` | No | Enables Ad Intelligence region checking for Meta & Google ads. |
+| `ADYNTEL_EMAIL` | No | Associated email for Adyntel API authentication. |
 
 Copy `.env.example` to `.env.local` and fill in the key.
 
@@ -239,4 +243,4 @@ See [TEN_MORE_HOURS.md](./TEN_MORE_HOURS.md) for a detailed breakdown. Top prior
 
 See [DEPLOY.md](./DEPLOY.md) for Vercel deployment instructions.
 
-Note: M4 (axe accessibility) is disabled on Vercel — Playwright requires a container runtime. All other modules run serverless.
+Note: M4 (axe accessibility) can run entirely serverless on Vercel via `@sparticuz/chromium`, or you can supply a `BROWSER_WS_ENDPOINT` to connect to a managed remote browser!

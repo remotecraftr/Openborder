@@ -39,15 +39,19 @@ Your first deploy runs in ~60 seconds. Vercel gives you a URL like:
 
 ---
 
-## Step 3 — Add the Gemini API Key (optional)
+## Step 3 — Add Environment Variables (optional)
 
-Without this, M1 uses regex detection (confidence: medium). With it, M1 uses Gemini Flash (confidence: high).
+Without `GEMINI_API_KEY`, M1 uses regex detection (confidence: medium). With it, M1 uses Gemini Flash (confidence: high).
+To enable M4 (Accessibility) and M3 advanced rendering on Vercel without exceeding the free-tier memory limit, you can attach a remote browser service.
 
 1. In your Vercel project dashboard → **Settings → Environment Variables**
 2. Add:
    - **Name:** `GEMINI_API_KEY`
    - **Value:** `AIza...` (your key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
    - **Environment:** Production, Preview, Development
+3. (Optional) For serverless Playwright support:
+   - **Name:** `BROWSER_WS_ENDPOINT`
+   - **Value:** `wss://chrome.browserless.io?token=...` (or any other CDP endpoint)
 3. Click **Save**
 4. Go to **Deployments → Redeploy** (so the new env var takes effect)
 
@@ -72,7 +76,7 @@ Or use the UI: open the root URL, type `allbirds.com`, click **Scan**.
 | Deployments | Unlimited | — |
 | Serverless invocations | 100k/month | Each scan = 1 |
 
-**M4 (axe-core accessibility)** is disabled on Vercel — Playwright/Chromium requires a container environment. Run `npm run analyze your-domain.com` locally to get M4 results.
+**M4 (axe-core accessibility)** runs seamlessly on Vercel via the `@sparticuz/chromium` package, or by supplying a remote managed browser endpoint (`BROWSER_WS_ENDPOINT`).
 
 ---
 
